@@ -58,7 +58,7 @@ VIEWS.home=(p,V)=>{const L=live();const cnt=t=>L.filter(x=>x.type===t).length;co
  V.innerHTML=`<header class="top"><button class="ib" id="hlock" aria-label="${T('lock_now')}" title="${T('lock_now')}">🔒</button><div class="ttl"><b>VaultNest</b><small>${esc(user||T('app_sub'))}</small></div>
  <button class="ib" id="htheme" aria-label="${T('s_theme')}" title="${T('s_theme')}">🎨</button><button class="ib" data-go="about" aria-label="${T('about')}" title="${T('about')}">ℹ️</button></header>
  <main class="wrap"><div class="search"><input id="hs" class="inp" type="search" placeholder="${T('search_ph')}" autocomplete="off" aria-label="${T('search_ph')}"></div><div id="hres"></div>
- <div id="hmain">${S.inboxCount?`<div class="banner"><p>📥 ${T('in_pending',{n:S.inboxCount})}</p><button class="btn sm" id="hinbox">${T('in_handle')}</button></div>`:''}${backupNag()}<button class="btn pri big wide" id="hadd">＋ ${T('add_item')}</button>
+ <div id="hmain">${S.inboxCount||S.inboxStuck?`<div class="banner"><p>📥 ${S.inboxCount?T('in_pending',{n:S.inboxCount}):''}${S.inboxStuck?' '+T('in_stuck_short',{n:S.inboxStuck}):''}</p><button class="btn sm" id="hinbox">${T('in_handle')}</button></div>`:''}${backupNag()}<button class="btn pri big wide" id="hadd">＋ ${T('add_item')}</button>
  <div class="grid">
   <button class="tile" data-go="list" data-p='{"type":"all"}'><span class="ti">🗝️</span><b>${T('cat_all')}</b><small>${T('items_n',{n:L.length})}</small></button>
   <button class="tile" data-go="list" data-p='{"type":"fav"}'><span class="ti">★</span><b>${T('cat_fav')}</b><small>${T('items_n',{n:L.filter(x=>x.fav).length})}</small></button>
@@ -102,7 +102,7 @@ function trashView(V){const its=S.items.filter(x=>x.deletedAt).sort((a,b)=>b.del
  V.innerHTML=`${topbar(T('trash'),T('trash_note'))}<main class="wrap">${its.length+fs.length?its.map(x=>row(icOf(x),x.title,fmtDate(x.deletedAt),'i',x.id)).join('')+fs.map(f=>row(ficon(f.type),f.name,fmtDate(f.deletedAt),'f',f.id)).join('')
   +`<button class="btn danger wide" id="tempty" style="margin-top:12px">${T('empty_trash')}</button>`:`<p class="empty">${T('trash_empty')}</p>`}</main>`;
  wire(V);
- $$('[data-rs]',V).forEach(b=>b.onclick=async()=>{const [k,id]=b.dataset.rs.split(':');if(k==='i'){const it=S.items.find(x=>x.id===id);it.deletedAt=0;await saveItem(it);}else{const f=S.files.find(x=>x.id===id);f.deletedAt=0;await saveFileMeta(f);}toast(T('restored'));rerender();});
+ $$('[data-rs]',V).forEach(b=>b.onclick=async()=>{const [k,id]=b.dataset.rs.split(':');const ok=k==='i'?await updateItem(S.items.find(x=>x.id===id),o=>{o.deletedAt=0;}):await updateFile(S.files.find(x=>x.id===id),o=>{o.deletedAt=0;});if(ok)toast(T('restored'));rerender();});
  $$('[data-rm]',V).forEach(b=>b.onclick=async()=>{if(!(await confirmDlg(T('del_forever_c'),{danger:true,ok:T('delete_forever')})))return;const [k,id]=b.dataset.rm.split(':');if(k==='i')await killItem(id);else await killFile(id);rerender();});
  const te_=$('#tempty',V);if(te_)te_.onclick=async()=>{if(!(await confirmDlg(T('empty_trash_c'),{danger:true,ok:T('empty_trash')})))return;for(const x of its)await killItem(x.id);for(const f of fs)await killFile(f.id);rerender();};}
 
@@ -188,7 +188,7 @@ function editItem(src){const isNew=!src.id;const pre=src.pre||{};
    if(!isNew)it.hist=pushHistory(it,nf);it.title=title;it.f=nf;it.cf=cf;it.fav=$('#e_fav',s).checked;if(isNew||pwChanged){it.pwChanged=Date.now();delete it.breach;}
    try{await saveItem(it);toast(T('saved'));close(it);}catch(e){err.textContent=T('save_fail',{e:e.message});}};
   const del=$('[data-a=del]',s);if(del)del.onclick=async()=>{if(!(await confirmDlg(T('del_confirm',{n:it.title}),{danger:true,ok:T('delete')})))return;
-   const orig=S.items.find(x=>x.id===it.id);orig.deletedAt=Date.now();await saveItem(orig);toast(T('moved_trash'));close('deleted');};}});}
+   const orig=S.items.find(x=>x.id===it.id);if(!(await updateItem(orig,o=>{o.deletedAt=Date.now();})))return;toast(T('moved_trash'));close('deleted');};}});}
 /* ================= files ================= */
 VIEWS.files=(p,V)=>{const cat=p.cat||'all';const list=liveFiles().filter(f=>cat==='all'||f.cat===cat).sort((a,b)=>b.created-a.created);
  V.innerHTML=`${topbar(T('files'),T('items_n',{n:liveFiles().length}))}<main class="wrap">
@@ -217,7 +217,7 @@ function editFile(m){return modal(`<h3 class="mh">${ficon(m.type)} ${T('edit')}<
  <div class="mact"><button class="btn" data-a="x">${T('cancel')}</button><button class="btn pri" data-a="s">${T('save')}</button></div><button class="btn danger wide" data-a="d" style="margin-top:14px">🗑️ ${T('delete')}</button>`,
  {sticky:true,onOpen:(s,close)=>{$('[data-a=x]',s).onclick=()=>close(null);
   $('[data-a=s]',s).onclick=async()=>{const old={name:m.name,cat:m.cat,itemId:m.itemId};m.name=$('#ef_n',s).value.trim()||m.name;m.cat=$('#ef_c',s).value;m.itemId=$('#ef_i',s).value;try{await saveFileMeta(m);}catch(e){Object.assign(m,old);toast(T('save_fail',{e:e.message}),'bad');return;}toast(T('saved'));close('saved');};
-  $('[data-a=d]',s).onclick=async()=>{if(!(await confirmDlg(T('del_confirm',{n:m.name}),{danger:true,ok:T('delete')})))return;m.deletedAt=Date.now();await saveFileMeta(m);toast(T('moved_trash'));close('deleted');};}});}
+  $('[data-a=d]',s).onclick=async()=>{if(!(await confirmDlg(T('del_confirm',{n:m.name}),{danger:true,ok:T('delete')})))return;if(!(await updateFile(m,o=>{o.deletedAt=Date.now();})))return;toast(T('moved_trash'));close('deleted');};}});}
 
 /* ================= generator ================= */
 VIEWS.gen=(p,V)=>{const o=genOpts();const opt=(k)=>`<label class="chk"><input type="checkbox" data-o="${k}" ${o[k]?'checked':''}> ${T('gen_'+k)}</label>`;const W=o.mode==='words';
@@ -256,8 +256,8 @@ VIEWS.health=(p,V)=>{const L=live();const withPw=L.filter(it=>pwFieldsOf(it).len
   rerender();};};
 
 /* ================= settings ================= */
-function backupDlg(){return (async()=>{let file,done=false;try{file=await buildBackup();}catch(e){toast(T('err_generic',{e:e.message}),'bad');return false;}
- const r=await modal(`<h3 class="mh">${T('b_ready')}</h3><p class="mtext">${esc(file.name)} · ${fmtSize(file.size)}</p><p class="mlbl">${T('b_hint')}</p>
+function backupDlg(){return (async()=>{let file,done=false;try{file=await buildBackup();}catch(e){logErr('backup '+(e.code||e.message));toast(e.code==='missingblob'?T('b_missingblob'):T('err_generic',{e:e.message}),'bad');return false;}
+ const r=await modal(`<h3 class="mh">${T('b_ready')}</h3><p class="mtext">${esc(file.name)} · ${fmtSize(file.size)}${file.recId?'\n'+esc(T('b_recid',{id:file.recId})):''}</p><p class="mlbl">${T('b_hint')}</p>
  <div class="stack" style="margin-top:12px">${navigator.canShare&&navigator.canShare({files:[file]})?`<button class="btn pri big" data-v="share">↗ ${T('b_share')}</button>`:''}<button class="btn big" data-v="save">⬇ ${T('b_save')}</button><button class="link" data-v="0">${T('cancel')}</button></div>`,
  {onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v))});
  if(r==='share'){try{await hold(()=>navigator.share({files:[file],title:file.name}));done=true;}catch(e){if(e.name!=='AbortError'){saveFile(file);done=true;}}}
@@ -309,7 +309,7 @@ VIEWS.settings=async(p,V)=>{const q=await DB.get('meta','quick'),bio=await DB.ge
  on('sguide',()=>modal('<div id="gh"></div>',{onOpen:(s,close)=>obSlides($('#gh',s),()=>close(),false)}));
  on('sreset',async()=>{if(!(await confirmDlg(T('reset_c1'),{danger:true,ok:T('delete')})))return;const w=T('reset_word');
   const a=await promptDlg(T('reset_c2',{w}),{danger:true,ok:T('delete')});if(a==null||a.trim()!==w)return;
-  S.unlocked=false;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;$('#view').innerHTML='';const res=await DB.wipe();try{await caches.delete('vaultnest-share');await caches.delete(INBOX);}catch(e){}
+  bcast('vault-changed');teardown();const res=navigator.locks?await navigator.locks.request('vaultnest-exclusive',()=>DB.wipe()):await DB.wipe();try{await caches.delete('vaultnest-share');await caches.delete(INBOX);}catch(e){}
   if(res!=='ok'){await alertDlg(T('reset_blocked'));location.reload();return;}LS.clearAll();toast(T('reset_done'));setTimeout(()=>location.reload(),700);});
  if(S.keepY!=null)window.scrollTo(0,S.keepY);};
 function changePwDlg(){return modal(`<h3 class="mh">${T('s_change_pw')}</h3><label class="lbl" for="chc">${T('cur_pw')}</label><div class="pwbox"><input id="chc" class="inp" type="password" dir="ltr" autocomplete="current-password" autofocus><button type="button" class="eye" data-eye="chc">👁</button></div>
@@ -347,7 +347,7 @@ function applyLook(){const h=document.documentElement;h.dataset.theme=LS.get('th
 function detectLang(){const n=(navigator.language||'he').slice(0,2).toLowerCase();return LANG[n]?n:(n==='iw'?'he':'en');}
 async function boot(){setLang(LS.get('lang',detectLang()));applyLook();
  const sq=/[?&]share=(\w+)/.exec(location.search);if(sq){try{history.replaceState(null,'',location.pathname);}catch(e){}
-  setTimeout(()=>{if(sq[1]==='nokey')toast(T('in_nokey'),'bad');else if(sq[1]==='err')toast(T('in_err'),'bad');else if(!S.unlocked)toast(T('in_arrived'));},700);}
+  setTimeout(()=>{if(sq[1]==='nokey')toast(T('in_nokey'),'bad');else if(sq[1]==='err')toast(T('in_err'),'bad');else if(sq[1]==='full')toast(T('in_full'),'bad');else if(sq[1]==='big')toast(T('in_big'),'bad');else if(!S.unlocked)toast(T('in_arrived'));},700);}
  try{if(window.caches)caches.delete('vaultnest-share');}catch(e){} // remove any unencrypted leftovers from 1.1.0 share-to-vault
  if(location.protocol==='file:'){fatal(T('fatal_file'));return;}
  if(!window.crypto||!crypto.subtle||!window.indexedDB){fatal(T('fatal_crypto'));return;}
@@ -357,4 +357,4 @@ async function boot(){setLang(LS.get('lang',detectLang()));applyLook();
 
 window.vaultBoot=boot;
 
-window.__MODS['app-views']=1;
+window.__MODS['app-views']='1.2.1';

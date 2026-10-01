@@ -64,10 +64,11 @@ async function scanDoc(file){let bmp;try{bmp=await createImageBitmap(file);}catc
   $('[data-a=full]',s).onclick=()=>{q=[[0,0],[1,0],[1,1],[0,1]];draw();};
   $('[data-a=x]',s).onclick=()=>close(null);
   const sv=$('[data-a=save]',s);
-  $('[data-a=ok]',s).onclick=()=>{if(!quadOk(q,src.width,src.height)){toast(T('scan_badquad'),'bad');return;}sv.disabled=true;result=null;$('#sc1',s).classList.add('hide');$('#sc2',s).classList.remove('hide');
-   setTimeout(()=>{try{showResult();sv.disabled=false;}catch(e){toast(T('scan_badquad'),'bad');$('#sc2',s).classList.add('hide');$('#sc1',s).classList.remove('hide');}},30);};
+  const modes=()=>$$('[data-m]',s);
+  $('[data-a=ok]',s).onclick=()=>{if(!quadOk(q,src.width,src.height)){toast(T('scan_badquad'),'bad');return;}sv.disabled=true;result=null;modes().forEach(b=>b.disabled=true);$('#sc1',s).classList.add('hide');$('#sc2',s).classList.remove('hide');
+   setTimeout(()=>{try{showResult();sv.disabled=false;modes().forEach(b=>b.disabled=false);}catch(e){toast(T('scan_badquad'),'bad');$('#sc2',s).classList.add('hide');$('#sc1',s).classList.remove('hide');}},30);};
   $('[data-a=back]',s).onclick=()=>{$('#sc2',s).classList.add('hide');$('#sc1',s).classList.remove('hide');draw();};
-  $$('[data-m]',s).forEach(b=>b.onclick=()=>{mode=b.dataset.m;$$('[data-m]',s).forEach(x=>x.setAttribute('aria-pressed',x===b));result=enhance(s._warped,mode);const r=$('#scr',s);r.getContext('2d').drawImage(result,0,0);});
+  $$('[data-m]',s).forEach(b=>b.onclick=()=>{if(!s._warped)return;mode=b.dataset.m;$$('[data-m]',s).forEach(x=>x.setAttribute('aria-pressed',x===b));result=enhance(s._warped,mode);const r=$('#scr',s);r.getContext('2d').drawImage(result,0,0);});
   $('[data-a=save]',s).onclick=async()=>{if(!result)return;sv.disabled=true;const b=await new Promise(r=>result.toBlob(r,'image/jpeg',.86));if(!b||!b.size){toast(T('file_fail'),'bad');sv.disabled=false;return;}close(new File([b],'scan-'+ymd()+'-'+Date.now().toString(36).slice(-4)+'.jpg',{type:'image/jpeg'}));};
   requestAnimationFrame(draw);}});}
 
@@ -84,47 +85,60 @@ async function origNoteOnce(){if(!LS.get('origNote',false)){LS.set('origNote',tr
 const SHARE_ITER=200000;
 function isShareFile(txt){try{const d=JSON.parse(txt);return !!d&&d.app==='VaultNest'&&d.kind==='share';}catch(e){return false;}}
 function genShareCode(){const b=rand(12);let s='';for(let i=0;i<12;i++){s+=REC_ABC[b[i]&31];if(i%4===3&&i<11)s+='-';}return s;}
-async function shareItem(it){if(!(await confirmDlg(T('sh_intro'),{title:T('sh_t'),ok:T('continue')})))return;
- const files=[];let total=0,skipped=0;for(const f of attachments(it.id)){if(total+f.size>25*1048576){skipped++;continue;}const bl=await fileBlob(f);total+=f.size;files.push({name:f.name,type:f.type,cat:f.cat,data:b64(await bl.arrayBuffer())});}
- const payload={item:{type:it.type,title:it.title,f:it.f||{},cf:it.cf||[],ic:it.ic||'',tplName:it.tplName||''},files,from:LS.get('user',''),t:Date.now()};
+async function shareItem(it){const def=TYPES[it.type]||TYPES.note;
+ // choose exactly what leaves the vault (2FA key off by default)
+ const opts=[];def.f.forEach(([k])=>{if(it.f[k])opts.push({id:'f:'+k,label:T('f_'+k),on:k!=='totp'});});
+ (it.cf||[]).forEach((c,i)=>{if(c.v)opts.push({id:'c:'+i,label:c.n||'—',on:true});});
+ attachments(it.id).forEach(f=>opts.push({id:'a:'+f.id,label:'📎 '+f.name+' · '+fmtSize(f.size),on:f.size<=25*1048576}));
+ const pick=await modal(`<h3 class="mh">↗ ${T('sh_t')}</h3><p class="mtext">${T('sh_intro')}</p><label class="lbl">${T('sh_pick')}</label>
+ ${opts.map(o=>`<label class="chk"><input type="checkbox" value="${esc(o.id)}" ${o.on?'checked':''}> ${esc(o.label)}</label>`).join('')}${opts.length?'':`<p class="mlbl">—</p>`}
+ <div class="mact"><button class="btn" data-v="0">${T('cancel')}</button><button class="btn pri" data-v="1">${T('continue')}</button></div>`,
+ {sticky:true,onOpen:(s,close)=>{$('[data-v="0"]',s).onclick=()=>close(null);$('[data-v="1"]',s).onclick=()=>close(new Set($$('input:checked',s).map(x=>x.value)));}});
+ if(!pick)return;const f={};Object.keys(it.f||{}).forEach(k=>{if(pick.has('f:'+k))f[k]=it.f[k];});const cf=(it.cf||[]).filter((c,i)=>pick.has('c:'+i));
+ const files=[];let total=0;for(const a of attachments(it.id)){if(!pick.has('a:'+a.id))continue;if(total+a.size>25*1048576)continue;const bl=await fileBlob(a);total+=a.size;files.push({name:a.name,type:a.type,cat:a.cat,data:b64(await bl.arrayBuffer())});}
+ const payload={item:{type:it.type,title:it.title,f,cf,ic:it.ic||'',tplName:it.tplName||''},files,from:LS.get('user',''),t:Date.now()};
  const code=genShareCode(),salt=rand(16);const e=await enc(await kdf(normRec(code),salt,SHARE_ITER),te.encode(JSON.stringify(payload)));
  const file=new File([JSON.stringify({app:'VaultNest',kind:'share',format:1,salt:b64(salt),iter:SHARE_ITER,iv:b64(e.iv),ct:b64(e.ct)})],`vaultnest-share-${ymd()}-${Date.now().toString(36).slice(-4)}.json`,{type:'application/json'});
- await modal(`<h3 class="mh">↗ ${T('sh_t')}</h3><p class="mtext">${T('sh_code_is')}</p><div class="reccode">${esc(code)}</div>${skipped?`<p class="mlbl" style="color:var(--warn)">${T('sh_skipped',{n:skipped})}</p>`:''}
+ await modal(`<h3 class="mh">↗ ${T('sh_t')}</h3><p class="mtext">${T('sh_code_is')}</p><div class="reccode">${esc(code)}</div>
  <p class="mlbl">${T('sh_how')}</p><div class="stack" style="margin-top:10px"><button class="btn pri" data-v="f">↗ ${T('sh_send_file')}</button><button class="btn" data-v="c">⧉ ${T('sh_copy_code')}</button><button class="btn" data-v="x">${T('done')}</button></div>`,
  {sticky:true,onOpen:(s,close)=>{$('[data-v=f]',s).onclick=()=>shareOrSave(file);$('[data-v=c]',s).onclick=()=>copyText(code);$('[data-v=x]',s).onclick=()=>close();}});}
-async function importShare(txt){let d;try{d=JSON.parse(txt);ub(d.salt,16);ub(d.iv,12);ub(d.ct);ckIter(d.iter);}catch(e){toast(T('sh_bad'),'bad');return;}let payload=null;
- for(;;){const c=await promptDlg(T('sh_code_prompt'),{text:T('sh_code_text'),mono:true,ltr:true,ph:'XXXX-XXXX-XXXX'});if(c==null)return;
+async function importShare(txt){let d;try{d=JSON.parse(txt);ub(d.salt,16);ub(d.iv,12);ub(d.ct);ckIter(d.iter);}catch(e){toast(T('sh_bad'),'bad');return false;}let payload=null;
+ for(;;){const c=await promptDlg(T('sh_code_prompt'),{text:T('sh_code_text'),mono:true,ltr:true,ph:'XXXX-XXXX-XXXX'});if(c==null)return false;
   try{payload=JSON.parse(td.decode(await dec(await kdf(normRec(c),unb64(d.salt),d.iter),unb64(d.iv),unb64(d.ct))));break;}catch(e){toast(T('sh_wrong'),'bad');}}
- // validate the decrypted content before saving anything
+ // validate the decrypted content (a valid code does not make the content trustworthy)
  const p=payload&&payload.item;const files=Array.isArray(payload&&payload.files)?payload.files:null;
- if(!p||typeof p.title!=='string'||typeof p.type!=='string'||!files||files.length>30||typeof (p.f||{})!=='object'){toast(T('sh_bad'),'bad');return;}
- let total=0;for(const f of files){if(!f||typeof f.name!=='string'||typeof f.data!=='string'||!B64RE.test(f.data)){toast(T('sh_bad'),'bad');return;}total+=f.data.length*.75;}
- if(total>30*1048576){toast(T('sh_bad'),'bad');return;}
- if(!(await confirmDlg(T('sh_confirm',{n:p.title,f:files.length}),{title:T('sh_recv_t'),ok:T('save')})))return;
- const cf=Array.isArray(p.cf)?p.cf.filter(c=>c&&typeof c.n==='string').map(c=>({n:c.n,v:String(c.v||''),s:!!c.s})):[];
- const it={id:uid(),type:TYPES[p.type]&&p.type[0]!=='_'?p.type:'note',title:p.title.slice(0,200),fav:false,created:Date.now(),updated:Date.now(),pwChanged:Date.now(),f:p.f||{},cf,ic:String(p.ic||''),tplName:String(p.tplName||'')};
- // encrypt everything first, then write item + all files in ONE transaction
- const recs=[];const metas=[];
- for(const f of files){const buf=unb64(f.data);const fileObj=new File([buf],f.name,{type:f.type||'application/octet-stream'});const e=await enc(S.dek,buf);
-  const th=/^image\//.test(fileObj.type)?await makeThumb(fileObj):null;const te2=th?await enc(S.dek,th):null;const id=uid();
-  const meta={name:f.name,type:fileObj.type,size:buf.length,cat:FCATS.includes(f.cat)?f.cat:'other',created:Date.now(),deletedAt:0,itemId:it.id};const m=await encJ(meta);
-  recs.push([id,{iv:e.iv,ct:e.ct},{id,miv:m.iv,mct:m.ct,tiv:te2?te2.iv:null,tct:te2?te2.ct:null}]);meta.id=id;meta.hasThumb=!!te2;metas.push(meta);}
- const ie=await encJ(it);
- try{await DB.run(['items','files','blobs'],'readwrite',t=>{t.objectStore('items').put({id:it.id,iv:ie.iv,ct:ie.ct},it.id);recs.forEach(([id,b,fr])=>{t.objectStore('blobs').put(b,id);t.objectStore('files').put(fr,id);});});}
- catch(e){toast(T('save_fail',{e:e.message}),'bad');return;}
- S.items.push(it);metas.forEach(m=>S.files.push(m));toast(T('sh_saved'));go('item',{id:it.id});return true;}
+ const okF=isObj(p&&p.f)&&Object.values(p.f).every(isStr);const okCf=p&&(p.cf==null||(Array.isArray(p.cf)&&p.cf.every(c=>isObj(c)&&isStr(c.n)&&isStr(c.v))));
+ if(!isObj(p)||!isStr(p.title)||!isStr(p.type)||!okF||!okCf||!files||files.length>30){toast(T('sh_bad'),'bad');return false;}
+ let total=0;for(const f of files){if(!isObj(f)||!isStr(f.name)||!isStr(f.data)||!B64RE.test(f.data)||(f.type!=null&&!isStr(f.type))){toast(T('sh_bad'),'bad');return false;}total+=f.data.length*.75;}
+ if(total>30*1048576){toast(T('sh_bad'),'bad');return false;}
+ const known=TYPES[p.type]&&p.type[0]!=='_';const fields={};Object.entries(p.f).forEach(([k,v])=>{fields[String(k).slice(0,40)]=v.slice(0,20000);});
+ if(!(await confirmDlg(T('sh_confirm',{n:p.title,f:files.length}),{title:T('sh_recv_t'),ok:T('save')})))return false;
+ const s=sess();
+ const it={id:uid(),type:known?p.type:'note',title:p.title.slice(0,200),fav:false,created:Date.now(),updated:Date.now(),pwChanged:Date.now(),f:fields,cf:(p.cf||[]).map(c=>({n:c.n.slice(0,100),v:c.v.slice(0,20000),s:!!c.s})),ic:isStr(p.ic)?p.ic.slice(0,8):'',tplName:isStr(p.tplName)?p.tplName.slice(0,100):''};
+ // encrypt everything with ONE captured key, then write the item + all files in ONE transaction
+ const recs=[];for(const f of files){recs.push(await encFileRec(s.k,new File([unb64(f.data)],f.name.slice(0,200),{type:f.type||'application/octet-stream'}),FCATS.includes(f.cat)?f.cat:'other',it.id));s.check();}
+ const ie=await encWith(s.k,it);
+ try{s.check();await DB.run(['items','files','blobs'],'readwrite',t=>{t.objectStore('items').put({id:it.id,iv:ie.iv,ct:ie.ct},it.id);recs.forEach(x=>{t.objectStore('blobs').put(x.blob,x.id);t.objectStore('files').put(x.rec,x.id);});});}
+ catch(e){toast(e.code==='stale'?T('op_stale'):T('save_fail',{e:e.message}),'bad');return false;}
+ S.items.push(it);recs.forEach(x=>S.files.push(x.meta));bcast('data');toast(T('sh_saved'));go('item',{id:it.id});return true;}
 async function receiveShareFlow(){const [f]=await pickFile($('#fbak'));if(!f)return;const txt=await f.text();if(isShareFile(txt))await importShare(txt);else toast(T('sh_bad'),'bad');}
 
 /* ================= "Share to VaultNest" — encrypted inbox (1.2.0) =================
    sw.js encrypts each share on arrival with the vault's public key. Here (vault unlocked) we decrypt, let the user
    decide, save it encrypted in the vault, and only THEN delete the inbox entry. "Later" keeps it. */
-async function handleInbox(auto){if(!S.unlocked||!S.inboxPriv)return;let list;try{list=await inboxEntries();}catch(e){return;}
- S.inboxCount=list.length;if(!list.length)return;const sid=S.sid;let dead=0;
- for(const url of list){if(sid!==S.sid||!S.unlocked)return;let sh;
-  try{sh=await inboxRead(url);}catch(e){dead++;continue;}
-  const r=await inboxOne(sh);if(sid!==S.sid||!S.unlocked)return;if(r==='done')await inboxDelete(url);else if(r==='stop')break;}
- if(dead){await alertDlg(T('in_dead',{n:dead}),T('in_t'));for(const url of list){try{await inboxRead(url);}catch(e){await inboxDelete(url);}}}
- S.inboxCount=(await inboxEntries()).length;if(S.unlocked)rerender();}
+async function handleInbox(auto){if(!S.unlocked||!S.inboxPriv||S.inboxBusy)return;S.inboxBusy=true;
+ try{let list;try{list=await inboxEntries();}catch(e){return;}const sid=S.sid;const stuck=[];
+  for(const url of list){if(sid!==S.sid||!S.unlocked)return;let sh;
+   try{sh=await inboxRead(url);}catch(e){stuck.push({url,code:e.code||'bad'});continue;}
+   const r=await inboxOne(sh);if(sid!==S.sid||!S.unlocked)return;if(r==='done')await inboxDelete(url);else if(r==='stop')break;}
+  // shares that cannot be opened are KEPT unless the user explicitly deletes them
+  if(stuck.length&&!auto){const nk=stuck.filter(x=>x.code==='nokey').length,br=stuck.length-nk;
+   const r=await modal(`<h3 class="mh">📥 ${T('in_t')}</h3><p class="mtext">${[nk?T('in_stuck_nokey',{n:nk}):'',br?T('in_stuck_bad',{n:br}):''].filter(Boolean).join('\n\n')}</p>
+    <div class="stack"><button class="btn pri" data-v="keep">${T('in_keep')}</button><button class="btn danger" data-v="del">${T('in_delete_stuck',{n:stuck.length})}</button></div>`,{sticky:true,onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v))});
+   if(r==='del'&&await confirmDlg(T('in_delete_stuck_c'),{danger:true,ok:T('delete')}))for(const x of stuck)await inboxDelete(x.url);}
+  await refreshInboxCounts();}
+ finally{S.inboxBusy=false;if(S.unlocked)rerender();}}
+async function refreshInboxCounts(){let ok=0,st=0;try{for(const u of await inboxEntries()){try{await inboxRead(u);ok++;}catch(e){st++;}}}catch(e){}S.inboxCount=ok;S.inboxStuck=st;}
 async function inboxOne({meta,files}){
  if(files.length===1&&/json/i.test(files[0].type+files[0].name)){const txt=await files[0].text();if(isShareFile(txt))return (await importShare(txt))?'done':'later';}
  if(files.length){const items=sortItems(live().slice());
@@ -135,7 +149,7 @@ async function inboxOne({meta,files}){
    {sticky:true,onOpen:(s,close)=>{$$('[data-v]',s).forEach(b=>b.onclick=()=>close({v:b.dataset.v,cat:$('#inc',s).value,item:$('#ini',s).value}));}});
   if(!r||r.v==='later')return 'stop';
   if(r.v==='del')return (await confirmDlg(T('in_discard_c'),{danger:true,ok:T('in_discard')}))?'done':'later';
-  try{const n=await addFilesAtomic(files.filter(f=>f.size<=100*1048576),r.cat,r.item);toast(T('files_added',{n}));toast(T('in_orig'));}catch(e){toast(T('save_fail',{e:e.message}),'bad');return 'later';}
+  try{const n=(await addFilesAtomic(files.filter(f=>f.size<=100*1048576),r.cat,r.item)).length;toast(T('files_added',{n}));toast(T('in_orig'));}catch(e){toast(T('save_fail',{e:e.message}),'bad');return 'later';}
   return 'done';}
  const txt=[meta.url,meta.text,meta.title].filter(Boolean).join(' ');const um=/(https?:\/\/[^\s]+)/i.exec(txt)||/\b([a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,})\b/i.exec(txt);
  const url=um?um[1]:'';const host=hostOf(url);const same=h=>h&&host&&(h===host||h.endsWith('.'+host)||host.endsWith('.'+h));
@@ -150,16 +164,16 @@ async function inboxOne({meta,files}){
  return 'done';}
 
 /* ================= emergency kit (print) ================= */
-function kitHTML(code){const addr=location.origin+location.pathname.replace(/index\.html$/,'');const user=LS.get('user','');
- const box=code?`<div class="k-code">${esc(code)}</div>`:`<div class="k-code k-blank">____-____-____-____-____-____</div>`;
+function kitHTML(code,recId){const addr=location.origin+location.pathname.replace(/index\.html$/,'');const user=LS.get('user','');
+ const box=code?`<div class="k-code">${esc(code)}</div>${recId?`<p>${esc(T('kit_recid',{id:recId}))}</p>`:''}`:`<div class="k-code k-blank">____-____-____-____-____-____</div>`;
  return `<div class="k-wrap" dir="${document.documentElement.dir}"><h1>VaultNest — ${T('kit_t')}</h1><p>${user?esc(user)+' · ':''}${fmtDate(Date.now())}</p>
  <h2>${T('kit_addr')}</h2><p class="k-mono">${esc(addr)}</p><h2>${T('rec_t')}</h2>${box}<p>${T('kit_code_note')}</p>
- <p>${code?T('kit_match',{d:fmtDate(Date.now())}):''}</p><h2>${T('kit_backup_where')}</h2><div class="k-line"></div><h2>${T('kit_steps_t')}</h2><ol>${[1,2,3,4].map(i=>`<li>${T('kit_s'+i)}</li>`).join('')}</ol>
+ <p>${code&&recId?T('kit_match',{id:recId}):''}</p><h2>${T('kit_backup_where')}</h2><div class="k-line"></div><h2>${T('kit_steps_t')}</h2><ol>${[1,2,3,4].map(i=>`<li>${T('kit_s'+i)}</li>`).join('')}</ol>
  <p class="k-warn">${T('kit_warn')}</p><p class="k-foot">AppNest · VaultNest ${APP_VERSION}</p></div>`;}
 async function emergencyKit(){const r=await modal(`<h3 class="mh">🧰 ${T('kit_t')}</h3><p class="mtext">${T('kit_d')}</p><div class="stack"><button class="btn pri" data-v="new">${T('kit_new')}</button><button class="btn" data-v="blank">${T('kit_blank')}</button><button class="link" data-v="0">${T('cancel')}</button></div><p class="mlbl">${T('kit_new_note')}</p>`,
  {onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v))});if(!r||r==='0')return;
  let code='';if(r==='new'){if(!(await confirmDlg(T('new_rec_c'))))return;code=await newRecovery();}
- const k=$('#printkit');k.innerHTML=kitHTML(code);await hold(async()=>{window.print();await sleep(500);});
+ const vm=await DB.get('meta','vault');const k=$('#printkit');k.innerHTML=kitHTML(code,code&&vm&&vm.rec?vm.rec.id:'');await hold(async()=>{window.print();await sleep(500);});
  if(code)await modal(`<h3 class="mh">${T('rec_t')}</h3><p class="mtext">${T('kit_after')}</p><div class="reccode">${esc(code)}</div><label class="chk"><input type="checkbox" id="kk"> ${T('rec_check')}</label><div class="mact"><button class="btn pri" id="kd" disabled>${T('done')}</button></div>`,
   {sticky:true,onOpen:(s,close)=>{$('#kk',s).onchange=e=>{$('#kd',s).disabled=!e.target.checked;};$('#kd',s).onclick=()=>close();}});
  k.innerHTML='';if(code)await mustBackupAfterKeys();}
@@ -228,8 +242,11 @@ async function templatesDlg(){for(;;){const L=templates();const r=await modal(`<
  if(!r||r==='0')return;await tplEditor(r==='new'?null:S.items.find(x=>x.id===r));}}
 
 /* ================= legacy decoy (feature removed in 1.1.1) ================= */
-async function legacyDecoyDlg(){const pw=await promptDlg(T('dcl_t'),{type:'password',text:T('dcl_d')});if(pw==null)return;
- let r;try{r=await removeDecoyWith(pw);}catch(e){toast(T('wrong_pw'),'bad');return;}toast(T('dcl_done',{i:r.items,f:r.files}));await loadAll();rerender();}
+async function legacyDecoyDlg(){const ch=await menuDlg(T('dcl_t'),[['move','📦',T('dcl_move')],['del','🗑️',T('dcl_del')]]);if(!ch)return;
+ const pw=await promptDlg(T('dcl_pw'),{type:'password',text:ch==='move'?T('dcl_move_d'):T('dcl_d')});if(pw==null)return;
+ if(ch==='del'&&!(await confirmDlg(T('dcl_del_c'),{danger:true,ok:T('delete')})))return;
+ let r;try{r=ch==='move'?await migrateDecoyWith(pw):await removeDecoyWith(pw);}catch(e){toast(e.code==='stale'?T('op_stale'):T('wrong_pw'),'bad');return;}
+ toast(T(ch==='move'?'dcl_moved':'dcl_done',{i:r.items,f:r.files}));await loadAll();rerender();}
 
 /* ================= small menus / attach an existing file ================= */
 function menuDlg(title,opts){return modal(`<h3 class="mh">${esc(title)}</h3><div class="stack">${opts.map(([v,ic,l])=>`<button class="row" data-v="${v}"><span class="ic">${ic}</span><span class="rt"><b>${esc(l)}</b></span></button>`).join('')}<button class="btn" data-v="">${T('cancel')}</button></div>`,
@@ -242,4 +259,4 @@ async function attachExisting(it){const free=liveFiles().filter(f=>f.itemId!==it
  if(!r||!r.length)return false;let n=0;for(const id of r){const f=S.files.find(x=>x.id===id);if(!f)continue;const old=f.itemId;f.itemId=it.id;try{await saveFileMeta(f);n++;}catch(e){f.itemId=old;}}
  toast(T('att_done',{n}));return n>0;}
 
-window.__MODS['app-features']=1;
+window.__MODS['app-features']='1.2.1';

@@ -205,6 +205,9 @@ textarea.inp{min-height:110px;resize:vertical}
 .cfrow{border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
 .cfbar{display:flex;justify-content:space-between;align-items:center}
 .modbar{position:fixed;left:0;right:0;bottom:0;z-index:90;background:var(--surf);border-top:2px solid var(--warn);padding:14px 16px calc(14px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;text-align:center}
+/* shown only if app-boot.js never runs (it removes this element first thing) — no script needed */
+.bootfail{position:fixed;left:0;right:0;bottom:0;z-index:95;background:#111;color:#EFE7D6;padding:16px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;opacity:0;pointer-events:none;animation:bfshow .3s 9s forwards}
+@keyframes bfshow{to{opacity:1;pointer-events:auto}}
 #printkit{display:none}
 @media print{
  html,body{background:#fff!important;color:#000!important}
@@ -221,6 +224,7 @@ textarea.inp{min-height:110px;resize:vertical}
 </head>
 <body>
 <a class="skip" href="#view">דלג לתוכן</a>
+<div id="bootfail" class="bootfail" role="alert"><p>VaultNest לא נטענה. בדוק חיבור ורענן. · VaultNest did not load. Check the connection and reload.</p><a class="btn pri" href="./">רענן · Reload</a></div>
 <div id="view" tabindex="-1"></div>
 <div id="lock" hidden></div>
 <div id="modals"></div>
@@ -230,6 +234,6 @@ textarea.inp{min-height:110px;resize:vertical}
 <input type="file" id="fcam" accept="image/*" capture="environment" hidden>
 <input type="file" id="fbak" accept=".json,application/json" hidden>
 <input type="file" id="fcsv" accept=".csv,text/csv,text/plain" hidden>
-<script src="app-boot.js?v=1.2.0"></script>
+<script src="app-boot.js?v=1.2.1"></script>
 </body>
 </html>

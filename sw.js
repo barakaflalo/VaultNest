@@ -2,18 +2,29 @@
    - per-file caching with Promise.allSettled (never atomic addAll); every app file is versioned (?v=)
    - navigation: network-first with ~4s timeout → cache → friendly offline page (never Response.error);
      a 404/5xx from the host also falls back to the cached app
+   - versioned app files (?v=) are immutable: exact cached copy first; the page itself stays network-first
    - redirected responses (Cloudflare 308 for .html) are re-wrapped clean before serving/caching
    - skipWaiting + clients.claim so a fixing version takes over immediately
    - cross-origin requests (Have I Been Pwned) are never touched or cached
    - SHARE TO VAULT (1.2.0): an incoming share is encrypted HERE, on arrival, with the vault's public key
      (ephemeral ECDH P-256 → HKDF-SHA256 → AES-256-GCM). Nothing readable is ever stored. Only the vault,
      when unlocked, holds the private key. The encrypted inbox ('vaultnest-inbox') survives app updates.
-   BUMP V ON EVERY UPDATE — and the ?v= in index.html (they must match). */
-const V = '1.2.0';
+   - SAFE UPDATE (1.2.1): the page + every JS module are REQUIRED and must report this exact version. If any is
+     missing or from another release, install fails → the previous working version stays active and cached.
+     Icons / manifest / privacy page are optional and never block an update.
+   BUMP V ON EVERY UPDATE — and the ?v= in index.html, and the version marker in each module (they must all match). */
+const V = '1.2.1';
 const VERSION = 'vaultnest-v' + V;
 const INBOX = 'vaultnest-inbox';
 const MODS = ['app-boot', 'vendor-qrcode', 'app-lang', 'app-core', 'app-ui', 'app-features', 'app-views'];
-const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './privacy_policy.html', ...MODS.map(m => './' + m + '.js?v=' + V)];
+const REQUIRED = ['./', './index.html', ...MODS.map(m => './' + m + '.js?v=' + V)];
+const OPTIONAL = ['./manifest.json', './icon-192.png', './icon-512.png', './privacy_policy.html'];
+// what a correct file of THIS release must contain
+function marker(u) {
+  if (u === './' || u === './index.html') return 'app-boot.js?v=' + V;
+  const m = /^\.\/([a-z-]+)\.js/.exec(u); if (!m) return null;
+  return m[1] === 'app-boot' ? "__BOOTV='" + V + "'" : "__MODS['" + m[1] + "']='" + V + "'";
+}
 
 async function clean(r) {
   if (!r || !r.redirected) return r;
@@ -32,8 +43,20 @@ h1{color:#C9A24A;font-family:Georgia,serif;font-weight:600}a{display:inline-bloc
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
     const c = await caches.open(VERSION);
-    await Promise.allSettled(SHELL.map(async u => {
-      try { const r = await fetch(u, { cache: 'no-cache' }); if (r.ok) await c.put(u, await clean(r)); } catch (err) { /* keep going */ }
+    for (const u of REQUIRED) {
+      let ok = false;
+      for (let a = 0; a < 3 && !ok; a++) {
+        try {
+          const r = await fetch(u, { cache: 'no-cache' }); if (!r.ok) continue;
+          const cr = await clean(r); const mk = marker(u);
+          if (mk && !(await cr.clone().text()).includes(mk)) continue;   // a file from another release
+          await c.put(u, cr); ok = true;
+        } catch (err) { /* retry */ }
+      }
+      if (!ok) { await caches.delete(VERSION); throw new Error('required file missing or wrong version: ' + u); }
+    }
+    await Promise.allSettled(OPTIONAL.map(async u => {
+      try { const r = await fetch(u, { cache: 'no-cache' }); if (r.ok) await c.put(u, await clean(r)); } catch (err) { /* optional */ }
     }));
   })());
   self.skipWaiting();
@@ -51,6 +74,8 @@ self.addEventListener('activate', e => {
 
 async function navigate(req) {
   const c = await caches.open(VERSION);
+  // "open the saved version" (offered by the loader when the site has a half-finished upload)
+  if (new URL(req.url).searchParams.get('fallback') === '1') { const hit = await c.match('./index.html'); if (hit) return clean(hit); }
   try {
     const r = await withTimeout(fetch(req, { cache: 'no-cache' }), 4000);
     const cr = await clean(r);
@@ -60,8 +85,10 @@ async function navigate(req) {
     }
     if (cr.ok) {
       const path = new URL(req.url).pathname;
-      const key = /\/(index\.html)?$/.test(path) || /\/index$/.test(path) ? './index.html' : req.url.split('?')[0];
-      c.put(key, cr.clone());
+      const isIndex = /\/(index\.html)?$/.test(path) || /\/index$/.test(path);
+      // never let a page from ANOTHER release overwrite the saved page of this one (half-finished upload → offline stays working)
+      if (!isIndex) c.put(req.url.split('?')[0], cr.clone());
+      else if ((await cr.clone().text()).includes('app-boot.js?v=' + V)) c.put('./index.html', cr.clone());
     }
     return cr;
   } catch (err) {
@@ -82,7 +109,11 @@ async function parkShare(req) {
     c = await caches.open(INBOX);
     const pr = await c.match(new URL('__inbox/pub', scope).href);
     if (!pr) return go('nokey');                       // vault never unlocked since the update: store NOTHING
-    const { jwk } = await pr.json();
+    const len = Number(req.headers.get('content-length') || 0);
+    if (len > 110 * 1048576) return go('big');          // refuse before reading a huge body into memory
+    const waiting = (await c.keys()).filter(k => /\/__inbox\/s-[a-z0-9]+$/.test(k.url)).length;
+    if (waiting >= 30) return go('full');               // queue quota
+    const { jwk, kid } = await pr.json();
     const pub = await crypto.subtle.importKey('jwk', jwk, ECDH, false, []);
     const fd = await req.formData();
     const eph = await crypto.subtle.generateKey(ECDH, true, ['deriveBits']);
@@ -105,7 +136,7 @@ async function parkShare(req) {
     const meta = { t: Date.now(), title: String(fd.get('title') || ''), text: String(fd.get('text') || ''), url: String(fd.get('url') || ''), files: fmeta, skipped };
     const e = await enc(new TextEncoder().encode(JSON.stringify(meta)));
     // the envelope is written LAST: a share without an envelope never finished and is cleaned up by the app
-    await c.put(base, new Response(JSON.stringify({ v: 1, epk: b64(epk), iv: b64(e.iv), ct: b64(new Uint8Array(e.ct)), files }), { headers: { 'Content-Type': 'application/json' } }));
+    await c.put(base, new Response(JSON.stringify({ v: 2, kid: kid || '', epk: b64(epk), iv: b64(e.iv), ct: b64(new Uint8Array(e.ct)), files }), { headers: { 'Content-Type': 'application/json' } }));
     ok = true;
   } catch (err) {
     try { if (c && base) for (const k of await c.keys()) if (k.url === base || k.url.startsWith(base + '/')) await c.delete(k); } catch (e2) {}
@@ -120,9 +151,12 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // pass-through: HIBP and anything external, never cached
   if (url.pathname.includes('/__inbox/')) return;  // inbox entries are read through the Cache API only
+  if (req.cache === 'no-store' || url.searchParams.has('probe')) return; // update checks always go straight to the site
   if (req.mode === 'navigate') { e.respondWith(navigate(req)); return; }
   e.respondWith((async () => {
     const c = await caches.open(VERSION);
+    // versioned app files (?v=) never change once released → serve the exact saved copy first
+    if (url.searchParams.has('v')) { const exact = await c.match(req); if (exact) return clean(exact); }
     try {
       const r = await withTimeout(fetch(req, { cache: 'no-cache' }), 6000);
       const cr = await clean(r);

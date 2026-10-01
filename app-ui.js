@@ -137,9 +137,11 @@ async function afterUnlock(raw,fresh){S.dekRaw=raw;S.dek=await importDEK(raw);S.
  setTimeout(()=>{const L=$('#lock');L.classList.add('gone');setTimeout(()=>{if(S.unlocked){L.hidden=true;L.innerHTML='';}},reduce?0:350);},reduce?0:600);
  try{await ensureInboxKey();}catch(e){logErr('inbox key '+e.message);}
  if(fresh)setTimeout(offerQuick,reduce?50:900);else setTimeout(()=>handleInbox(true),reduce?50:900);}
-function lock(silent){if(!S.unlocked)return;S.sid++;S.inboxPriv=null;clearInterval(S.tick);S.tick=0;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;S.items=[];S.files=[];S.unlocked=false;S.decoy=false;
+// one place that ends a session: every pending operation sees a new sid and drops its write
+function teardown(){S.sid++;S.inboxPriv=null;S.inboxKeys={};S.inboxBusy=false;clearInterval(S.tick);S.tick=0;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;S.items=[];S.files=[];S.unlocked=false;S.decoy=false;
  S.urls.forEach(u=>URL.revokeObjectURL(u));S.urls=[];Object.values(S.thumbs).forEach(u=>URL.revokeObjectURL(u));S.thumbs={};
- $$('#modals .mwrap').forEach(w=>w._close&&w._close(null));$('#modals').innerHTML='';$('#view').innerHTML='';clearTimeout(idleT);
+ $$('#modals .mwrap').forEach(w=>w._close&&w._close(null));$('#modals').innerHTML='';$('#view').innerHTML='';clearTimeout(idleT);}
+function lock(silent){if(!S.unlocked)return;teardown();
  if(clipPending||clipT){clearTimeout(clipT);clipT=0;clipClear();}showUnlock();if(!silent)toast(T('locked'));}
 let idleT=0,hiddenAt=0;
 function armIdle(){clearTimeout(idleT);if(S.unlocked)idleT=setTimeout(()=>{if(!S.hold)lock();else armIdle();},10*60000);}
@@ -156,25 +158,51 @@ async function offerQuick(){if(!S.unlocked)return;const bioOk=await bioAvailable
  if(r==='bio')await doSetupBio();else if(r==='pin'||r==='pattern')await doSetupQuick(r);}
 async function doSetupQuick(kind){const s=await askNewSecret(kind);if(!s)return;await setQuick(kind,s);toast(T('quick_set_ok'));rerender();}
 async function doSetupBio(){try{await hold(setupBio);toast(T('bio_ok'));}catch(e){toast(e.code==='noprf'?T('bio_unsupported'):T('bio_fail'),'bad');logErr('bio '+(e.name||'')+' '+e.message);}rerender();}
-async function restoreFlow(){const [f]=await pickFile($('#fbak'));if(!f)return;const txt=await f.text();
+async function restoreFlow(){const [f]=await pickFile($('#fbak'));if(!f)return;
+ if(f.size>MAX_BACKUP){await alertDlg(T('b_too_big'),T('b_import'));return;}
+ const txt=await f.text();
  if(isShareFile(txt)){if(S.unlocked)await importShare(txt);else toast(T('sh_need_unlock'),'bad');return;}
- const d=parseBackup(txt);if(!d){toast(T('b_bad'),'bad');return;}
+ // 1) envelope + bounds BEFORE asking for a password (no key derivation on unchecked numbers)
+ let d;try{d=parseBackup(txt);}catch(e){await alertDlg(e.code==='version'?T('b_version'):T('b_bad'),T('b_import'));return;}
+ if(!d){await alertDlg(T('b_bad'),T('b_import'));return;}
+ // shares waiting in the inbox belong to THIS vault's key; restoring another vault would leave them closed (they are kept, not deleted)
+ if(S.unlocked){let n=0;try{n=(await inboxEntries()).length;}catch(e){}
+  if(n){const c=await menuDlg(T('b_inbox_pending',{n}),[['handle','📥',T('in_handle')],['go','↩',T('b_continue_anyway')]]);if(!c)return;if(c==='handle'){await handleInbox(false);return;}}}
  let raw=null;for(;;){const pw=await promptDlg(T('b_pw_prompt'),{type:'password',text:T('b_pw_text')});if(pw==null)return;
   try{raw=await unwrapBackup(d,pw,false);break;}catch(e){try{raw=await unwrapBackup(d,pw,true);break;}catch(e2){toast(T('wrong_pw'),'bad');}}}
- // 1) check the WHOLE backup before touching anything
- toast(T('b_checking'));let P;
- try{P=await prepareRestore(d,raw);}catch(e){raw.fill(0);logErr('restore check '+(e.code||e.message));
-  await alertDlg(e.code==='corrupt'?T('b_corrupt',{n:e.bad}):T('b_bad'),T('b_import'));return;}
- // 2) ask with the real numbers
+ // 2) decrypt + schema-check everything; legacy decoy records must be POSITIVELY identified or left out
+ toast(T('b_checking'));let P;const opt={};
+ for(;;){try{P=await prepareRestore(d,raw,opt);break;}catch(e){
+  if(e.code==='needdecoy'){const c=await menuDlg(T('b_needdecoy',{n:e.n}),[['pw','🔑',T('b_decoy_pw')],['drop','➖',T('b_drop_unknown',{n:e.n})]]);
+   if(c==='pw'){const dp=await promptDlg(T('dcl_pw'),{type:'password'});if(dp==null)continue;try{opt.decoyRaw=await unwrapBackupDecoy(d,dp);}catch(x){toast(T('wrong_pw'),'bad');}continue;}
+   if(c==='drop'){opt.dropUnknown=true;continue;}raw.fill(0);return;}
+  raw.fill(0);logErr('restore check '+(e.code||e.message));await alertDlg(e.code==='corrupt'?T('b_corrupt',{n:e.bad}):T('b_bad'),T('b_import'));return;}}
+ // 3) ask with the real numbers
  const hasVault=!!(await DB.get('meta','vault'));const st=P.stats;
- let msg=T('b_summary',{i:st.items,f:st.files,d:st.created?fmtDate(st.created):'?'});if(st.unknown)msg+='\n'+T('b_unknown',{n:st.unknown});
+ let msg=T('b_summary',{i:st.items,f:st.files,d:st.created?fmtDate(st.created):'?'});if(st.recId)msg+='\n'+T('b_recid',{id:st.recId});
+ if(st.legacy)msg+='\n'+T('b_legacy',{n:st.legacy});if(st.dropped)msg+='\n'+T('b_dropped',{n:st.dropped});
  if(hasVault)msg+='\n\n'+(S.unlocked?T('b_replace_cur',{i:live().length,f:liveFiles().length}):T('b_replace'));
  const ch=await modal(`<h3 class="mh">↩ ${T('b_import')}</h3><p class="mtext">${esc(msg)}</p><div class="stack">${hasVault&&S.unlocked?`<button class="btn" data-v="bk">🛡️ ${T('b_backup_first')}</button>`:''}
   <button class="btn pri ${hasVault?'danger':''}" data-v="go">${T('restore')}</button><button class="btn" data-v="0">${T('cancel')}</button></div>`,{onOpen:(s2,close)=>$$('[data-v]',s2).forEach(b=>b.onclick=()=>close(b.dataset.v))});
  if(!ch||ch==='0'){raw.fill(0);return;}if(ch==='bk'){const ok=await backupDlg();if(!ok){raw.fill(0);return;}}
- // 3) replace in ONE transaction (aborts entirely on any error) and verify by reading back
- toast(T('b_restoring'));try{await commitRestore(P);}catch(e){logErr('restore commit '+(e.code||e.message));toast(e.code==='verify'?T('b_verify_fail'):T('b_restore_fail'),'bad');raw.fill(0);return;}
- if(S.unlocked){S.sid++;clearInterval(S.tick);if(S.dekRaw)S.dekRaw.fill(0);S.unlocked=false;}
- LS.set('onboarded',1);LS.set('lastBackup',Date.now());LS.set('keysAt',0);toast(T('b_restored'));toast(T('b_quick_note'));await afterUnlock(raw);}
+ // 4) other tabs lock first; a snapshot of the current vault is kept in memory until the restore is verified
+ const run=async()=>{bcast('vault-changed');toast(T('b_restoring'));let snap=null;if(hasVault){try{snap=await snapshotAll();}catch(e){}}
+  try{await commitRestore(P);}catch(e){logErr('restore commit '+(e.code||e.message));return 'unchanged';}
+  if(await verifyRestore(P,raw))return 'ok';
+  logErr('restore verify failed');if(!snap)return 'unverified';
+  const c=await menuDlg(T('b_verify_fail_rb'),[['rb','↩',T('b_rollback')],['keep','✔',T('b_keep_new')]]);
+  if(c==='rb'){try{await restoreSnapshot(snap);return 'rolled';}catch(e){return 'rbfail';}}return 'unverified';};
+ const res=navigator.locks?await navigator.locks.request('vaultnest-exclusive',run):await run();
+ if(res==='unchanged'){raw.fill(0);toast(T('b_restore_fail'),'bad');return;}
+ if(res==='rolled'){raw.fill(0);toast(T('b_rolled_back'));if(S.unlocked){await loadAll();rerender();}else showUnlock();return;}
+ if(res==='rbfail')await alertDlg(T('b_rollback_fail'),T('b_import'));
+ if(res==='unverified')await alertDlg(T('b_verify_fail'),T('b_import'));
+ if(S.unlocked)teardown();
+ LS.set('onboarded',1);LS.set('lastBackup',Date.now());LS.set('keysAt',0);if(res==='ok'){toast(T('b_restored'));toast(T('b_quick_note'));}await afterUnlock(raw);}
 
-window.__MODS['app-ui']=1;
+/* ---- other tabs: a restore / reset elsewhere locks this tab; data changes elsewhere are reloaded */
+if(BC)BC.onmessage=e=>{const m=e.data||{};
+ if(m.type==='vault-changed'){if(S.unlocked){lock(true);toast(T('tab_locked'));}else if(DB.db){DB.db.close();DB.db=null;}}
+ else if(m.type==='data'&&S.unlocked){clearTimeout(S.reloadT);S.reloadT=setTimeout(async()=>{if(!S.unlocked)return;await loadAll();if(!$('#modals').children.length)rerender();},350);}};
+
+window.__MODS['app-ui']='1.2.1';
