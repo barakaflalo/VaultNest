@@ -131,14 +131,16 @@ function showNewPw(raw){const L=$('#lock');L._redraw=null;
  bindMeter($('#np1'),$('#npm'),$('#npml'));
  $('#nbtn').onclick=async()=>{const pw=await readPwFields(L,'np',$('#nerr'));if(!pw)return;$('#nbtn').disabled=true;
   await setMasterPw(raw,pw);LS.set('pwfails',0);LS.set('pwuntil',0);toast(T('pw_changed'));await afterUnlock(raw);};}
-async function afterUnlock(raw,fresh){S.dekRaw=raw;S.dek=await importDEK(raw);S.decoy=false;S.sid++;await loadAll();S.unlocked=true;S.stack=[];
+async function afterUnlock(raw,fresh){let ep=await DB.get('meta','epoch');if(!ep){ep=newEpoch();await DB.put('meta','epoch',ep);}
+ S.dekRaw=raw;S.dek=await importDEK(raw);S.decoy=false;S.sid++;S.epoch=ep;await loadAll();S.unlocked=true;S.stack=[];
  const d=$('#lock .dial');if(d)d.classList.add('open');const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
  $('#view').removeAttribute('aria-hidden');go('home',{},true);armIdle();persistStorage();
- setTimeout(()=>{const L=$('#lock');L.classList.add('gone');setTimeout(()=>{if(S.unlocked){L.hidden=true;L.innerHTML='';}},reduce?0:350);},reduce?0:600);
+ const usid=S.sid;// the fade-out belongs to THIS session only — a lock right after unlocking must not hide the new lock screen
+ setTimeout(()=>{if(!S.unlocked||S.sid!==usid)return;const L=$('#lock');L.classList.add('gone');setTimeout(()=>{if(S.unlocked&&S.sid===usid){L.hidden=true;L.innerHTML='';}},reduce?0:350);},reduce?0:600);
  try{await ensureInboxKey();}catch(e){logErr('inbox key '+e.message);}
  if(fresh)setTimeout(offerQuick,reduce?50:900);else setTimeout(()=>handleInbox(true),reduce?50:900);}
 // one place that ends a session: every pending operation sees a new sid and drops its write
-function teardown(){S.sid++;S.inboxPriv=null;S.inboxKeys={};S.inboxBusy=false;clearInterval(S.tick);S.tick=0;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;S.items=[];S.files=[];S.unlocked=false;S.decoy=false;
+function teardown(){S.sid++;S.epoch='';S.inboxPriv=null;S.inboxKeys={};S.inboxBusy=false;clearInterval(S.tick);S.tick=0;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;S.items=[];S.files=[];S.unlocked=false;S.decoy=false;
  S.urls.forEach(u=>URL.revokeObjectURL(u));S.urls=[];Object.values(S.thumbs).forEach(u=>URL.revokeObjectURL(u));S.thumbs={};
  $$('#modals .mwrap').forEach(w=>w._close&&w._close(null));$('#modals').innerHTML='';$('#view').innerHTML='';clearTimeout(idleT);}
 function lock(silent){if(!S.unlocked)return;teardown();
@@ -186,18 +188,21 @@ async function restoreFlow(){const [f]=await pickFile($('#fbak'));if(!f)return;
   <button class="btn pri ${hasVault?'danger':''}" data-v="go">${T('restore')}</button><button class="btn" data-v="0">${T('cancel')}</button></div>`,{onOpen:(s2,close)=>$$('[data-v]',s2).forEach(b=>b.onclick=()=>close(b.dataset.v))});
  if(!ch||ch==='0'){raw.fill(0);return;}if(ch==='bk'){const ok=await backupDlg();if(!ok){raw.fill(0);return;}}
  // 4) other tabs lock first; a snapshot of the current vault is kept in memory until the restore is verified
- const run=async()=>{bcast('vault-changed');toast(T('b_restoring'));let snap=null;if(hasVault){try{snap=await snapshotAll();}catch(e){}}
+ const wasUnlocked=S.unlocked;
+ const run=async()=>{bcast('vault-changed');toast(T('b_restoring'));
+  if(S.unlocked)teardown(); // stop THIS tab's own pending writes first (their session is now stale)
+  let snap=null;if(hasVault){try{snap=await snapshotAll();}catch(e){logErr('restore snapshot '+e.message);return 'nosnap';}}
   try{await commitRestore(P);}catch(e){logErr('restore commit '+(e.code||e.message));return 'unchanged';}
   if(await verifyRestore(P,raw))return 'ok';
   logErr('restore verify failed');if(!snap)return 'unverified';
   const c=await menuDlg(T('b_verify_fail_rb'),[['rb','↩',T('b_rollback')],['keep','✔',T('b_keep_new')]]);
   if(c==='rb'){try{await restoreSnapshot(snap);return 'rolled';}catch(e){return 'rbfail';}}return 'unverified';};
- const res=navigator.locks?await navigator.locks.request('vaultnest-exclusive',run):await run();
- if(res==='unchanged'){raw.fill(0);toast(T('b_restore_fail'),'bad');return;}
- if(res==='rolled'){raw.fill(0);toast(T('b_rolled_back'));if(S.unlocked){await loadAll();rerender();}else showUnlock();return;}
+ const res=await DB.exclusiveDo(run);
+ if(res==='nosnap'){raw.fill(0);await alertDlg(T('b_snap_fail'),T('b_import'));if(wasUnlocked)showUnlock();return;}
+ if(res==='unchanged'){raw.fill(0);toast(T('b_restore_fail'),'bad');if(wasUnlocked)showUnlock(T('b_restore_fail'));return;}
+ if(res==='rolled'){raw.fill(0);toast(T('b_rolled_back'));showUnlock(T('b_rolled_back'));return;}
  if(res==='rbfail')await alertDlg(T('b_rollback_fail'),T('b_import'));
  if(res==='unverified')await alertDlg(T('b_verify_fail'),T('b_import'));
- if(S.unlocked)teardown();
  LS.set('onboarded',1);LS.set('lastBackup',Date.now());LS.set('keysAt',0);if(res==='ok'){toast(T('b_restored'));toast(T('b_quick_note'));}await afterUnlock(raw);}
 
 /* ---- other tabs: a restore / reset elsewhere locks this tab; data changes elsewhere are reloaded */
@@ -205,4 +210,4 @@ if(BC)BC.onmessage=e=>{const m=e.data||{};
  if(m.type==='vault-changed'){if(S.unlocked){lock(true);toast(T('tab_locked'));}else if(DB.db){DB.db.close();DB.db=null;}}
  else if(m.type==='data'&&S.unlocked){clearTimeout(S.reloadT);S.reloadT=setTimeout(async()=>{if(!S.unlocked)return;await loadAll();if(!$('#modals').children.length)rerender();},350);}};
 
-window.__MODS['app-ui']='1.2.1';
+window.__MODS['app-ui']='1.2.2';

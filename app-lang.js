@@ -75,7 +75,7 @@ bio_ok:'טביעת האצבע הופעלה',bio_fail:'טביעת האצבע בו
 s_change_pw:'שנה סיסמה ראשית',cur_pw:'סיסמה נוכחית',pw_changed:'הסיסמה הראשית עודכנה',
 s_new_rec:'צור קוד שחזור חדש',new_rec_c:'ייווצר קוד שחזור חדש. בכספת שבמכשיר הקוד הקודם יפסיק לעבוד, אבל גיבויים שכבר יצרת יישארו עם הקוד הקודם. להמשיך?',
 s_backup:'גיבוי והעברה',b_export:'צור גיבוי מוצפן',b_import:'שחזר מגיבוי',b_last:'גיבוי אחרון: {d}',b_never:'עוד לא נוצר גיבוי',
-b_hint:'תוכן הפריטים והקבצים בגיבוי מוצפן ונפתח רק עם הסיסמה הראשית (או קוד השחזור) שהיו בזמן יצירתו. גלויים בו: שם המשתמש, התאריך, הגרסה, מזהי הרשומות, הגדלים ופרמטרי ההצפנה. בטלפון אפשר לשמור אותו ישר ל-Google Drive דרך ״שתף״.',
+b_hint:'תוכן הפריטים והקבצים בגיבוי מוצפן ונפתח רק עם הסיסמה הראשית (או קוד השחזור) שהיו בזמן יצירתו. גלויים בו: שם המשתמש, התאריך, הגרסה, מזהי הרשומות, הגדלים ופרמטרי ההצפנה. שיתופים שעוד ממתינים לטיפול אינם חלק מהגיבוי. בטלפון אפשר לשמור אותו ישר ל-Google Drive דרך ״שתף״.',
 b_ready:'הגיבוי מוכן',b_share:'שתף (Drive, מייל…)',b_save:'שמור קובץ',b_made:'הגיבוי נשמר',
 b_pw_prompt:'סיסמה ראשית של הגיבוי',b_pw_text:'הזן את הסיסמה הראשית שהייתה בזמן יצירת הגיבוי.',
 b_replace:'השחזור יחליף את כל התוכן הנוכחי בכספת בתוכן הגיבוי. להמשיך?',b_restored:'הכספת שוחזרה מהגיבוי',b_bad:'הקובץ אינו גיבוי תקין של VaultNest',
@@ -225,7 +225,11 @@ dcl_del:'מחק את התוכן שלה',
 dcl_pw:'סיסמת ההסוואה',
 dcl_move_d:'הפריטים והקבצים של כספת ההסוואה יוצפנו מחדש ויופיעו בכספת הראשית.',
 dcl_del_c:'למחוק לצמיתות את התוכן של כספת ההסוואה? אי אפשר לבטל.',
-dcl_moved:'הועברו {i} פריטים ו-{f} קבצים לכספת הראשית'
+dcl_moved:'הועברו {i} פריטים ו-{f} קבצים לכספת הראשית',
+b_snap_fail:'לא הצלחתי לשמור צילום מצב של הכספת הנוכחית, ולכן לא היה אפשר להבטיח החזרה אם משהו ישתבש. השחזור בוטל והכספת לא שונתה.',
+sh_size:'נבחרו קבצים בגודל {s}',
+sh_over:'מעל 25MB — בטל חלק מהקבצים',
+dcl_left:'{n} קבצים של כספת ההסוואה לא הועברו (חסר להם תוכן או שהוא פגום). לכן המפתח של כספת ההסוואה נשמר, כדי שאפשר יהיה לנסות שוב או למחוק אותם במפורש.'
 },
 en:{
 app_sub:'My vault',skip_link:'Skip to content',
@@ -297,7 +301,7 @@ bio_ok:'Fingerprint unlock is on',bio_fail:'Fingerprint was cancelled or failed'
 s_change_pw:'Change master password',cur_pw:'Current password',pw_changed:'Master password updated',
 s_new_rec:'Create a new recovery code',new_rec_c:'A new recovery code will be created. On this device the previous code stops working, but backups you already made keep the previous code. Continue?',
 s_backup:'Backup & transfer',b_export:'Create encrypted backup',b_import:'Restore from backup',b_last:'Last backup: {d}',b_never:'No backup yet',
-b_hint:'Item and file content in the backup is encrypted and opens only with the master password (or recovery code) set when it was made. Visible in it: user name, date, version, record IDs, sizes and encryption parameters. On a phone you can save it straight to Google Drive with "Share".',
+b_hint:'Item and file content in the backup is encrypted and opens only with the master password (or recovery code) set when it was made. Visible in it: user name, date, version, record IDs, sizes and encryption parameters. Shares still waiting to be handled are not part of the backup. On a phone you can save it straight to Google Drive with "Share".',
 b_ready:'Backup ready',b_share:'Share (Drive, email…)',b_save:'Save file',b_made:'Backup saved',
 b_pw_prompt:'Backup master password',b_pw_text:'Enter the master password that was set when this backup was made.',
 b_replace:'Restoring replaces everything in the vault with the backup contents. Continue?',b_restored:'Vault restored from backup',b_bad:'This file is not a valid VaultNest backup',
@@ -446,11 +450,15 @@ dcl_del:'Delete its content',
 dcl_pw:'Decoy password',
 dcl_move_d:'The decoy vault\'s items and files will be re-encrypted and appear in the main vault.',
 dcl_del_c:'Permanently delete the decoy vault content? This cannot be undone.',
-dcl_moved:'Moved {i} items and {f} files into the main vault'
+dcl_moved:'Moved {i} items and {f} files into the main vault',
+b_snap_fail:'Could not take a snapshot of the current vault, so a way back could not be guaranteed if something went wrong. The restore was cancelled and your vault was not changed.',
+sh_size:'Selected files: {s}',
+sh_over:'over 25MB — unselect some files',
+dcl_left:'{n} decoy-vault files were not moved (their content is missing or damaged). So the decoy key was kept, to allow trying again or deleting them explicitly.'
 }};
 let CUR='he';
 function T(k,v){const L=LANG[CUR]||LANG.en;let s=L[k]!=null?L[k]:(LANG.en[k]!=null?LANG.en[k]:k);if(v)s=s.replace(/\{(\w+)\}/g,(m,n)=>v[n]!=null?v[n]:m);return s;}
 /* passphrase word lists (own, simple common words) */
 const WORDS={en:'able acid acorn actor adapt admit adult agent agree ahead aim air alarm album alert alien alley alpha amber amigo anchor angle ankle apple april apron arch arena argue arm army arrow art aside atlas atom attic audio aunt autumn avoid awake award axis baby bacon badge bagel baker bald ball bamboo banana band bank barn barrel basil basket bath beach beam bean bear beard beast bed bee beef bell belt bench berry bike bird bishop black blade blank blast blend blink block bloom blue board boat body bold bolt bonus book boot boss bottle bounce bowl box brain brave bread brick bride brief brisk broom brown brush bubble bucket budget buddy bulb bunny burger bus butter button buzz cabin cable cactus cake calm camel camera camp canal candy canoe canvas canyon cape card cargo carpet carrot cart castle cat cave cedar cello chain chair chalk champ charm cheek cheese cherry chess chief chip choir cider cigar circle city civic clam clap claw clay clean clerk cliff climb clock cloud clown club coach coast cobra cocoa coin comet coral corn cotton couch cousin crab craft crane crate crisp crow crown cube cup curry curve cycle daisy dance dawn deer delta denim depth desert desk dial diary diesel dime diner dingo disco dish diver dizzy dock doll dolphin donkey door dough dove dragon drama dream dress drift drill drum duck dune dust eagle earth easel echo edge eel eight elbow elder elm ember empty engine enjoy epic equal error essay event exact exit extra fable fabric fairy faith falcon fancy farm fawn feast feather fence ferry fever fiber fiddle field fifty film final finch fire fish flag flame flash flint float flock flour flute foam focus fog folk forest fork fort fossil fox frame fresh frog frost fruit fudge fuel fuzzy gadget galaxy game garden garlic gate gecko gem genie ghost giant gift ginger giraffe glass globe glove glow goat gold golf goose gorilla grain grape grass gravy green grid grill grin group guitar gull habit hammer hand happy harbor harp hat hawk hazel heart hedge helmet hero hill hippo hobby honey hood hook horse hotel house humor hunter husky ice icon idea igloo image index ink input iris iron island ivory jacket jaguar jam jar jazz jeans jelly jet jewel jog joke judge juice jumbo jungle kayak kettle key kid king kite kitten kiwi knee knife koala label ladder lake lamp lane laser latte lava lawn layer leaf lemon lens lever lily lime linen lion liquid lobby lock lodge logic lotus lucky lunar lunch lynx magic magnet mango maple marble market mask meadow medal melon memo mercy metal meteor mint mirror mist mixer model monk moose motor mouse mud mug muffin museum music nacho napkin navy nest net night ninja noble noodle north novel nut oak oasis ocean olive omega onion opera orange orbit orchid otter oven owl oyster paddle page palm panda paper parade park parrot pasta patch peach peanut pearl pebble pedal pencil pepper piano pickle pig pillow pilot pine pink pizza planet plum poem polar pony pool poppy potato pretty prism pulse pumpkin puppy puzzle quail quartz queen quest quick quiet quilt quiz rabbit radar radio rain ranch raven razor recipe reef relax rhino ribbon rice ridge river robin robot rocket rodeo roof rose royal ruby rugby salad salmon salsa sand satin sauce scarf school scout sea seal seed shark sheep shelf shell ship shoe silk silver singer siren skate sketch ski sky sleep slide smile snail snake snow soap sock sofa solar song soup spark spice spider spoon spring squid stamp star steam stone storm straw sugar summer sun surf swan sweet swing table taco tango tea teddy tent tiger toast tomato topaz torch tower toy tractor train tree trick tulip tuna tunnel turtle twin umbrella uncle unit urban valley vanilla velvet violin visit vivid volcano wafer wagon walnut walrus water wave wheel whale window winter wizard wolf wood wool yacht yak yard yellow yoga zebra zero zigzag zone'.split(' '),he:'אבן אגם אגוז אדמה אוהל אוזן אוצר אורז אות אחות איש אלון אמא אננס אסם אפרסק ארגז ארון אריה ארמון אש באר בגד בובה בוקר בטן ביצה בית בלון במה בננה בקבוק ברווז ברז ברק גבינה גבעה גדר גוזל גזר גחלת גינה גיטרה גלגל גמל גן גשם גשר דבורה דבש דג דגל דוב דודה דלת דף דרך הר הרים ורד זאב זברה זהב זית זמר זנב זרע חבל חבר חג חול חולצה חום חוף חורף חותם חזיר חיוך חלב חלון חלום חמור חסה חתול טווס טוסט טיל טלה טנא טרקטור יד ילד ים ינשוף יער ירח ירוק כדור כוכב כוס כותרת כיסא כלב כנף כפית כפר כרוב כתר לב לביא לחם לילה לימון לוח לטאה מגדל מדבר מזלג מחברת מטוס מטרייה מים מכונית מלון מלך מנגו מנורה מסגרת מעיל מפה מפתח מראה מרק משחק מתנה נבל נהר נוצה נחל נחש נמל נמר נסיך נעל נר סבא סבון סוס סוכר סולם סוסון סיר סלע סנאי ספר ספינה עגבניה עגלה עוגה עוף עט עין עיר עכבר ענן עפרון עץ פגז פונפון פיל פינה פירה פנס פסל פעמון פרה פרח פרפר צב צבע צדף צלחת צנון צפרדע קוף קיץ קיר קמח קן קנה קסם קערה קפה קקטוס קרח קשת ראש רגל רדיו רוח רחוב ריבה רימון רכבת רעם שבלול שדה שוקו שולחן שועל שורש שחף שטיח שיר שלג שמיים שמש שן שעון שפן שקד שקית שרוך תבלין תוף תות תמר תנור תפוח תפוז תרנגול תרמיל'.split(' ')};
 
-window.__MODS['app-lang']='1.2.1';
+window.__MODS['app-lang']='1.2.2';

@@ -2,7 +2,7 @@
    a visible "update not fully loaded" bar instead of dead buttons, error log for the diagnostic report.
    The version comes from this script's own ?v= in index.html; every module must report the SAME version. */
 'use strict';
-window.__BOOTV='1.2.1';
+window.__BOOTV='1.2.2';
 (function(){
  const LSP='vaultnest_';
  const bf=document.getElementById('bootfail');if(bf)bf.remove();

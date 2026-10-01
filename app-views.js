@@ -309,14 +309,14 @@ VIEWS.settings=async(p,V)=>{const q=await DB.get('meta','quick'),bio=await DB.ge
  on('sguide',()=>modal('<div id="gh"></div>',{onOpen:(s,close)=>obSlides($('#gh',s),()=>close(),false)}));
  on('sreset',async()=>{if(!(await confirmDlg(T('reset_c1'),{danger:true,ok:T('delete')})))return;const w=T('reset_word');
   const a=await promptDlg(T('reset_c2',{w}),{danger:true,ok:T('delete')});if(a==null||a.trim()!==w)return;
-  bcast('vault-changed');teardown();const res=navigator.locks?await navigator.locks.request('vaultnest-exclusive',()=>DB.wipe()):await DB.wipe();try{await caches.delete('vaultnest-share');await caches.delete(INBOX);}catch(e){}
+  bcast('vault-changed');teardown();const res=await DB.exclusiveDo(()=>DB.wipe());try{await caches.delete('vaultnest-share');await caches.delete(INBOX);}catch(e){}
   if(res!=='ok'){await alertDlg(T('reset_blocked'));location.reload();return;}LS.clearAll();toast(T('reset_done'));setTimeout(()=>location.reload(),700);});
  if(S.keepY!=null)window.scrollTo(0,S.keepY);};
 function changePwDlg(){return modal(`<h3 class="mh">${T('s_change_pw')}</h3><label class="lbl" for="chc">${T('cur_pw')}</label><div class="pwbox"><input id="chc" class="inp" type="password" dir="ltr" autocomplete="current-password" autofocus><button type="button" class="eye" data-eye="chc">👁</button></div>
  ${pwFields('ch')}<div class="err" id="cherr" role="alert"></div><div class="mact"><button class="btn" data-a="x">${T('cancel')}</button><button class="btn pri" data-a="s">${T('save')}</button></div>`,
  {sticky:true,onOpen:(s,close)=>{bindMeter($('#ch1',s),$('#chm',s),$('#chml',s));$('[data-a=x]',s).onclick=()=>close();
   $('[data-a=s]',s).onclick=async()=>{const err=$('#cherr',s);try{const raw=await unwrapPw($('#chc',s).value);raw.fill(0);}catch(e){err.textContent=T('wrong_pw');return;}
-   const pw=await readPwFields(s,'ch',err);if(!pw)return;await setMasterPw(S.dekRaw,pw);toast(T('pw_changed'));close();await mustBackupAfterKeys();};}});}
+   const pw=await readPwFields(s,'ch',err);if(!pw)return;await setMasterPw(S.dekRaw,pw,sess());toast(T('pw_changed'));close();await mustBackupAfterKeys();};}});}
 /* ================= about ================= */
 VIEWS.about=async(p,V)=>{const errs=JSON.parse(localStorage.getItem(LSP+'errlog')||'[]');
  V.innerHTML=`${topbar(T('about'))}<main class="wrap"><div style="text-align:center;margin:10px 0 18px"><div class="dialwrap" style="margin:0 auto 8px;width:110px">${dialSVG()}</div>
@@ -357,4 +357,4 @@ async function boot(){setLang(LS.get('lang',detectLang()));applyLook();
 
 window.vaultBoot=boot;
 
-window.__MODS['app-views']='1.2.1';
+window.__MODS['app-views']='1.2.2';

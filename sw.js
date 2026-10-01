@@ -13,7 +13,7 @@
      missing or from another release, install fails → the previous working version stays active and cached.
      Icons / manifest / privacy page are optional and never block an update.
    BUMP V ON EVERY UPDATE — and the ?v= in index.html, and the version marker in each module (they must all match). */
-const V = '1.2.1';
+const V = '1.2.2';
 const VERSION = 'vaultnest-v' + V;
 const INBOX = 'vaultnest-inbox';
 const MODS = ['app-boot', 'vendor-qrcode', 'app-lang', 'app-core', 'app-ui', 'app-features', 'app-views'];
@@ -101,6 +101,9 @@ async function navigate(req) {
 /* ---- encrypted share inbox ---- */
 const b64 = u => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
 const ECDH = { name: 'ECDH', namedCurve: 'P-256' };
+// shares are parked ONE AT A TIME, so the queue quota can't be overrun by parallel requests
+let parkQueue = Promise.resolve();
+function parkShareQueued(req) { const p = parkQueue.then(() => parkShare(req)); parkQueue = p.catch(() => {}); return p; }
 async function parkShare(req) {
   const scope = self.registration.scope;
   const go = q => Response.redirect(new URL('./?share=' + q, scope).href, 303);
@@ -110,7 +113,7 @@ async function parkShare(req) {
     const pr = await c.match(new URL('__inbox/pub', scope).href);
     if (!pr) return go('nokey');                       // vault never unlocked since the update: store NOTHING
     const len = Number(req.headers.get('content-length') || 0);
-    if (len > 110 * 1048576) return go('big');          // refuse before reading a huge body into memory
+    if (len > 100 * 1048576 + 256 * 1024) return go('big'); // refuse before reading the body (when the browser sends a length)
     const waiting = (await c.keys()).filter(k => /\/__inbox\/s-[a-z0-9]+$/.test(k.url)).length;
     if (waiting >= 30) return go('full');               // queue quota
     const { jwk, kid } = await pr.json();
@@ -146,7 +149,7 @@ async function parkShare(req) {
 
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/share-target')) { e.respondWith(parkShare(req)); return; }
+  if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/share-target')) { e.respondWith(parkShareQueued(req)); return; }
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // pass-through: HIBP and anything external, never cached

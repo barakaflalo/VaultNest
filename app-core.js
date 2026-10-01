@@ -2,7 +2,7 @@
    Loaded by app-boot.js in a fixed order with ?v=<version>. Last line registers the module. */
 'use strict';
 /* ================= constants ================= */
-const APP_VERSION=window.__APPV||'1.2.1';
+const APP_VERSION=window.__APPV||'1.2.2';
 const DB_NAME='appnest_vault';
 const LSP='vaultnest_';
 const KDF_ITER=600000, QUICK_ITER=310000, REC_ITER=150000;
@@ -44,11 +44,24 @@ open(){if(this.db)return Promise.resolve(this.db);return new Promise((res,rej)=>
  r.onupgradeneeded=()=>{const d=r.result;STORES.forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s);});};
  r.onsuccess=()=>{this.db=r.result;this.db.onversionchange=()=>{this.db.close();this.db=null;};res(this.db);};
  r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});},
-// fn must only queue requests; any exception aborts the whole transaction explicitly (nothing half-written)
-async run(stores,mode,fn){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction(stores,mode);let out,r;try{r=fn(t);}catch(e){try{t.abort();}catch(_){}rej(e);return;}if(r&&'onsuccess' in r)r.onsuccess=()=>{out=r.result;};t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error||new Error('abort'));});},
+// THE write boundary. (1) every write holds the shared cross-tab lock 'vaultnest-db'; restore/reset hold it exclusively.
+// (2) a session-bound write (g = sess()) is re-checked AFTER the database is open, synchronously before the transaction
+//     is created, and again INSIDE the transaction against the vault epoch — a restore/reset in any tab changes the
+//     epoch, so a stale write aborts atomically even if it was already queued. fn must only queue requests.
+exclusive:false,
+async run(stores,mode,fn,g){if(mode==='readwrite'&&navigator.locks&&!this.exclusive)return navigator.locks.request('vaultnest-db',{mode:'shared'},()=>this._run(stores,mode,fn,g));return this._run(stores,mode,fn,g);},
+async _run(stores,mode,fn,g){const d=await this.open();return new Promise((res,rej)=>{const stale=()=>Object.assign(new Error('stale'),{code:'stale'});
+ if(g&&!g.ok()){rej(stale());return;}
+ const list=Array.isArray(stores)?stores.slice():[stores];if(g&&g.epoch&&!list.includes('meta'))list.push('meta');
+ const t=d.transaction(list,mode);let out,r,failed=false;const fail=e=>{failed=true;try{t.abort();}catch(_){}rej(e);};
+ const go=()=>{try{r=fn(t);}catch(e){fail(e);return;}if(r&&'onsuccess' in r)r.onsuccess=()=>{out=r.result;};};
+ t.oncomplete=()=>res(out);t.onerror=()=>{if(!failed)rej(t.error);};t.onabort=()=>{if(!failed)rej(t.error||new Error('abort'));};
+ if(g&&g.epoch){const q=t.objectStore('meta').get('epoch');q.onsuccess=()=>{if(q.result!==g.epoch||!g.ok())fail(stale());else go();};}else go();});},
+// restore / reset: no other write in any tab can run meanwhile
+async exclusiveDo(fn){const run=async()=>{this.exclusive=true;try{return await fn();}finally{this.exclusive=false;}};return navigator.locks?navigator.locks.request('vaultnest-db',{mode:'exclusive'},run):run();},
 get(s,k){return this.run(s,'readonly',t=>t.objectStore(s).get(k));},
-put(s,k,v){return this.run(s,'readwrite',t=>{t.objectStore(s).put(v,k);});},
-del(s,k){return this.run(s,'readwrite',t=>{t.objectStore(s).delete(k);});},
+put(s,k,v,g){return this.run(s,'readwrite',t=>{t.objectStore(s).put(v,k);},g);},
+del(s,k,g){return this.run(s,'readwrite',t=>{t.objectStore(s).delete(k);},g);},
 all(s){return this.run(s,'readonly',t=>t.objectStore(s).getAll());},
 count(s){return this.run(s,'readonly',t=>t.objectStore(s).count());},
 async wipe(){if(this.db){this.db.close();this.db=null;}return new Promise(r=>{const q=indexedDB.deleteDatabase(DB_NAME);q.onsuccess=()=>r('ok');q.onerror=()=>r('error');q.onblocked=()=>setTimeout(()=>r('blocked'),4000);});}};
@@ -66,7 +79,7 @@ function genRecovery(){const b=rand(24);let s='';for(let i=0;i<24;i++){s+=REC_AB
 const normRec=c=>String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 
 /* ================= state ================= */
-const S={dek:null,dekRaw:null,items:[],files:[],unlocked:false,stack:[],urls:[],thumbs:{},hold:0,decoy:false,decoyExists:false,tick:0,unreadable:0,sid:0,inboxPriv:null,inboxKeys:{},inboxCount:0,inboxStuck:0,inboxBusy:false};
+const S={dek:null,dekRaw:null,items:[],files:[],unlocked:false,stack:[],urls:[],thumbs:{},hold:0,decoy:false,decoyExists:false,tick:0,unreadable:0,sid:0,epoch:'',inboxPriv:null,inboxKeys:{},inboxCount:0,inboxStuck:0,inboxBusy:false};
 
 /* ================= vault / keys ================= */
 async function createVault(pw){
@@ -74,11 +87,11 @@ async function createVault(pw){
  const w=await enc(await kdf(pw,salt,KDF_ITER),raw);
  const rw=await enc(await kdf(normRec(code),rsalt,REC_ITER),raw);
  await DB.put('meta','vault',{v:1,created:Date.now(),kdf:{iter:KDF_ITER,salt},pw:{iv:w.iv,ct:w.ct},rec:{iter:REC_ITER,salt:rsalt,iv:rw.iv,ct:rw.ct,id:recIdGen()}});
- return {raw,code};}
+ await DB.put('meta','epoch',newEpoch());return {raw,code};}
 async function unwrapPw(pw){const m=await DB.get('meta','vault');const k=await kdf(pw,m.kdf.salt,m.kdf.iter);return new Uint8Array(await dec(k,m.pw.iv,m.pw.ct));}
 async function unwrapRec(code){const m=await DB.get('meta','vault');const k=await kdf(normRec(code),m.rec.salt,m.rec.iter);return new Uint8Array(await dec(k,m.rec.iv,m.rec.ct));}
-async function setMasterPw(raw,pw){const m=await DB.get('meta','vault');const salt=rand(16);const w=await enc(await kdf(pw,salt,KDF_ITER),raw);
- m.kdf={iter:KDF_ITER,salt};m.pw={iv:w.iv,ct:w.ct};await DB.put('meta','vault',m);LS.set('keysAt',Date.now());}
+async function setMasterPw(raw,pw,g){const m=await DB.get('meta','vault');const salt=rand(16);const w=await enc(await kdf(pw,salt,KDF_ITER),raw);
+ m.kdf={iter:KDF_ITER,salt};m.pw={iv:w.iv,ct:w.ct};await DB.put('meta','vault',m,g);LS.set('keysAt',Date.now());}
 async function unwrapDecoy(pw){const d=await DB.get('meta','decoy');if(!d)throw Object.assign(new Error('nodecoy'),{name:'OperationError'});const k=await kdf(pw,d.kdf.salt,d.kdf.iter);return new Uint8Array(await dec(k,d.pw.iv,d.pw.ct));}
 async function setDecoyPw(raw,pw){const salt=rand(16);const w=await enc(await kdf(pw,salt,KDF_ITER),raw);await DB.put('meta','decoy',{kdf:{iter:KDF_ITER,salt},pw:{iv:w.iv,ct:w.ct}});}
 // v1.1.1: the decoy vault was removed. Legacy decoy data is removed ONLY by positive identification:
@@ -86,10 +99,10 @@ async function setDecoyPw(raw,pw){const salt=rand(16);const w=await enc(await kd
 async function removeDecoyWith(pw){const raw=await unwrapDecoy(pw);const k=await importDEK(raw);raw.fill(0);const di=[],df=[];
  for(const r of await DB.all('items')){try{await dec(k,r.iv,r.ct);di.push(r.id);}catch(e){}}
  for(const r of await DB.all('files')){try{await dec(k,r.miv,r.mct);df.push(r.id);}catch(e){}}
- await DB.run(['meta','items','files','blobs'],'readwrite',t=>{di.forEach(id=>t.objectStore('items').delete(id));df.forEach(id=>{t.objectStore('files').delete(id);t.objectStore('blobs').delete(id);});t.objectStore('meta').delete('decoy');});
+ await DB.run(['meta','items','files','blobs'],'readwrite',t=>{di.forEach(id=>t.objectStore('items').delete(id));df.forEach(id=>{t.objectStore('files').delete(id);t.objectStore('blobs').delete(id);});t.objectStore('meta').delete('decoy');},sess());
  S.decoyExists=false;return {items:di.length,files:df.length};}
-async function newRecovery(){const m=await DB.get('meta','vault');const code=genRecovery(),rsalt=rand(16);
- const rw=await enc(await kdf(normRec(code),rsalt,REC_ITER),S.dekRaw);m.rec={iter:REC_ITER,salt:rsalt,iv:rw.iv,ct:rw.ct,id:recIdGen()};await DB.put('meta','vault',m);LS.set('keysAt',Date.now());return code;}
+async function newRecovery(){const s=sess();const m=await DB.get('meta','vault');const code=genRecovery(),rsalt=rand(16);
+ const rw=await enc(await kdf(normRec(code),rsalt,REC_ITER),S.dekRaw);m.rec={iter:REC_ITER,salt:rsalt,iv:rw.iv,ct:rw.ct,id:recIdGen()};await DB.put('meta','vault',m,s);LS.set('keysAt',Date.now());return code;}
 // device key: non-extractable, stored in IndexedDB; wraps quick-unlock blob so PIN/pattern alone is useless off-device
 async function devKey(){let k=await DB.get('meta','devkey');if(!k){k=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);await DB.put('meta','devkey',k);}return k;}
 async function setQuick(kind,secret){const salt=rand(16);const inner=await enc(await kdf(kind+':'+secret,salt,QUICK_ITER),S.dekRaw);
@@ -116,7 +129,8 @@ async function unlockBio(){const b=await DB.get('meta','bio');return new Uint8Ar
 /* ================= session guard =================
    Every multi-step write captures the vault key + session once, uses ONLY that key for all its parts,
    and checks the session again right before committing. Locked or switched meanwhile → the write is dropped. */
-function sess(){const k=S.dek,id=S.sid;return {k,ok:()=>S.unlocked&&S.sid===id&&S.dek===k,check(){if(!this.ok())throw Object.assign(new Error('stale'),{code:'stale'});}};}
+function sess(){const k=S.dek,id=S.sid,epoch=S.epoch;return {k,epoch,ok:()=>S.unlocked&&S.sid===id&&S.dek===k&&S.epoch===epoch,check(){if(!this.ok())throw Object.assign(new Error('stale'),{code:'stale'});}};}
+const newEpoch=()=>b64(rand(9));
 const encWith=(k,obj)=>enc(k,te.encode(JSON.stringify(obj)));
 const BC=('BroadcastChannel' in window)?new BroadcastChannel('vaultnest'):null;
 function bcast(type){try{if(BC)BC.postMessage({type,t:Date.now()});}catch(e){}}
@@ -131,17 +145,17 @@ async function loadAll(){const s=sess();const items=[],files=[];let unreadable=0
  if(unreadable&&!decoyExists)logErr('unreadable records: '+unreadable);
  await purgeTrash();return true;}
 async function saveItem(it){const s=sess();const rec=Object.assign({},it,{updated:Date.now()});const e=await encWith(s.k,rec);s.check();
- await DB.put('items',rec.id,{id:rec.id,iv:e.iv,ct:e.ct});it.updated=rec.updated;
+ await DB.put('items',rec.id,{id:rec.id,iv:e.iv,ct:e.ct},s);it.updated=rec.updated;
  const i=S.items.findIndex(x=>x.id===it.id);if(i>=0)S.items[i]=it;else S.items.push(it);bcast('data');}
 // change an item and save it; on failure the in-memory item goes back to how it was
 async function updateItem(it,mutate){const before=JSON.stringify(it);mutate(it);try{await saveItem(it);return true;}catch(e){Object.assign(it,JSON.parse(before));toast(T('save_fail',{e:e.message}),'bad');return false;}}
 async function saveFileMeta(m){const s=sess();const clean={name:m.name,type:m.type,size:m.size,cat:m.cat,created:m.created,deletedAt:m.deletedAt||0,itemId:m.itemId||''};
- const rec=await DB.get('files',m.id);if(!rec)throw new Error('missing');const e=await encWith(s.k,clean);s.check();rec.miv=e.iv;rec.mct=e.ct;await DB.put('files',m.id,rec);bcast('data');}
+ const rec=await DB.get('files',m.id);if(!rec)throw new Error('missing');const e=await encWith(s.k,clean);s.check();rec.miv=e.iv;rec.mct=e.ct;await DB.put('files',m.id,rec,s);bcast('data');}
 async function updateFile(m,mutate){const before=JSON.stringify(m);mutate(m);try{await saveFileMeta(m);return true;}catch(e){Object.assign(m,JSON.parse(before));toast(T('save_fail',{e:e.message}),'bad');return false;}}
 async function killItem(id){const att=S.files.filter(x=>x.itemId===id).map(x=>x.id);
- await DB.run(['items','files','blobs'],'readwrite',t=>{t.objectStore('items').delete(id);att.forEach(f=>{t.objectStore('files').delete(f);t.objectStore('blobs').delete(f);});});
+ await DB.run(['items','files','blobs'],'readwrite',t=>{t.objectStore('items').delete(id);att.forEach(f=>{t.objectStore('files').delete(f);t.objectStore('blobs').delete(f);});},sess());
  S.items=S.items.filter(x=>x.id!==id);att.forEach(f=>{S.files=S.files.filter(x=>x.id!==f);if(S.thumbs[f]){URL.revokeObjectURL(S.thumbs[f]);delete S.thumbs[f];}});bcast('data');}
-async function killFile(id){await DB.run(['files','blobs'],'readwrite',t=>{t.objectStore('files').delete(id);t.objectStore('blobs').delete(id);});S.files=S.files.filter(x=>x.id!==id);if(S.thumbs[id]){URL.revokeObjectURL(S.thumbs[id]);delete S.thumbs[id];}bcast('data');}
+async function killFile(id){await DB.run(['files','blobs'],'readwrite',t=>{t.objectStore('files').delete(id);t.objectStore('blobs').delete(id);},sess());S.files=S.files.filter(x=>x.id!==id);if(S.thumbs[id]){URL.revokeObjectURL(S.thumbs[id]);delete S.thumbs[id];}bcast('data');}
 async function purgeTrash(){const lim=Date.now()-30*864e5;
  for(const it of S.items.filter(x=>x.deletedAt&&x.deletedAt<lim))await killItem(it.id);
  for(const f of S.files.filter(x=>x.deletedAt&&x.deletedAt<lim))await killFile(f.id);}
@@ -161,7 +175,7 @@ async function encFileRec(k,f,cat,itemId){const buf=await f.arrayBuffer();const 
 async function addOneFile(f,cat,itemId){return (await addFilesAtomic([f],cat,itemId))[0];}
 // several files in ONE transaction (all or nothing), all encrypted with the same captured key
 async function addFilesAtomic(files,cat,itemId){const s=sess();const out=[];for(const f of files){out.push(await encFileRec(s.k,f,cat,itemId));s.check();}
- s.check();await DB.run(['files','blobs'],'readwrite',t=>{out.forEach(x=>{t.objectStore('blobs').put(x.blob,x.id);t.objectStore('files').put(x.rec,x.id);});});
+ s.check();await DB.run(['files','blobs'],'readwrite',t=>{out.forEach(x=>{t.objectStore('blobs').put(x.blob,x.id);t.objectStore('files').put(x.rec,x.id);});},s);
  out.forEach(x=>S.files.push(x.meta));bcast('data');return out.map(x=>x.meta);}
 async function thumbURL(id){if(S.thumbs[id])return S.thumbs[id];const r=await DB.get('files',id);if(!r||!r.tct)return null;
  const u=URL.createObjectURL(new Blob([await dec(S.dek,r.tiv,r.tct)],{type:'image/jpeg'}));S.thumbs[id]=u;return u;}
@@ -186,11 +200,11 @@ async function ensureInboxKey(){if(!window.caches)return;const s=sess();const ke
  let cur=await DB.get('meta','inbox');const old=(await DB.get('meta','inboxOld'))||[];
  for(const m of old){const p=await open(m);if(p)keys[m.kid]=p;}
  let curPriv=null;if(cur){if(!cur.kid)cur.kid=await kidOf(cur.pub);curPriv=await open(cur);
-  if(!curPriv){if(!old.some(x=>x.kid===cur.kid)){old.push(cur);s.check();await DB.put('meta','inboxOld',old.slice(-12));}cur=null;}}
+  if(!curPriv){if(!old.some(x=>x.kid===cur.kid)){old.push(cur);await DB.put('meta','inboxOld',old,s);}cur=null;}}
  if(!cur){const kp=await crypto.subtle.generateKey(ECDH,true,['deriveBits']);const pk8=await crypto.subtle.exportKey('pkcs8',kp.privateKey);const jwk=await crypto.subtle.exportKey('jwk',kp.publicKey);
   const pub={kty:jwk.kty,crv:jwk.crv,x:jwk.x,y:jwk.y};const e=await enc(s.k,pk8);cur={kid:await kidOf(pub),pub,iv:e.iv,ct:e.ct,created:Date.now()};
   curPriv=await crypto.subtle.importKey('pkcs8',pk8,ECDH,false,['deriveBits']);new Uint8Array(pk8).fill(0);}
- s.check();await DB.put('meta','inbox',cur);keys[cur.kid]=curPriv;S.inboxKeys=keys;S.inboxPriv=curPriv;
+ await DB.put('meta','inbox',cur,s);keys[cur.kid]=curPriv;S.inboxKeys=keys;S.inboxPriv=curPriv;
  const c=await caches.open(INBOX);await c.put('./__inbox/pub',new Response(JSON.stringify({v:2,kid:cur.kid,jwk:cur.pub}),{headers:{'Content-Type':'application/json'}}));}
 async function inboxKey(epkRaw,priv){const epk=await crypto.subtle.importKey('raw',epkRaw,ECDH,false,[]);const bits=await crypto.subtle.deriveBits({name:'ECDH',public:epk},priv,256);
  const hk=await crypto.subtle.importKey('raw',bits,'HKDF',false,['deriveKey']);return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:epkRaw,info:te.encode('vaultnest-inbox-v1')},hk,{name:'AES-GCM',length:256},false,['decrypt']);}
@@ -201,7 +215,7 @@ async function inboxEntries(){if(!window.caches||!(await caches.has(INBOX)))retu
  for(const u of urls){const m=/(\/__inbox\/s-[a-z0-9]+)\/f\d+$/.exec(u);if(m&&!env.some(e=>e.endsWith(m[1]))){const t=parseInt(m[1].split('-')[1],36);if(!t||Date.now()-t>3600e3)await c.delete(u);}}
  return env.sort();}
 const inErr=code=>Object.assign(new Error(code),{code});
-async function inboxRead(url){const c=await caches.open(INBOX);const r0=await c.match(url);if(!r0)throw inErr('missing');let env;try{env=await r0.json();}catch(e){throw inErr('bad');}
+async function inboxRead(url,opt={}){const c=await caches.open(INBOX);const r0=await c.match(url);if(!r0)throw inErr('missing');let env;try{env=await r0.json();}catch(e){throw inErr('bad');}
  if(!env||typeof env.epk!=='string'||typeof env.iv!=='string'||typeof env.ct!=='string'||(env.files!=null&&!Array.isArray(env.files)))throw inErr('bad');
  const keys=env.kid&&S.inboxKeys[env.kid]?[S.inboxKeys[env.kid]]:Object.values(S.inboxKeys||{});let meta=null,key=null;
  for(const p of keys){try{const k=await inboxKey(unb64(env.epk),p);meta=JSON.parse(td.decode(await dec(k,unb64(env.iv),unb64(env.ct))));key=k;break;}catch(e){}}
@@ -209,6 +223,7 @@ async function inboxRead(url){const c=await caches.open(INBOX);const r0=await c.
  // the ENCRYPTED file list is the source of truth; the outer list must match it exactly
  const mf=Array.isArray(meta.files)?meta.files:[],ef=env.files||[];
  if(mf.map(f=>f.key).sort().join(',')!==ef.map(f=>f.key).sort().join(','))throw inErr('bad');
+ if(opt.metaOnly)return {meta,files:[]};
  const files=[];for(const m of mf){const f=ef.find(x=>x.key===m.key);const r=await c.match(url+'/'+m.key);if(!r)throw inErr('missing');
   let pt;try{pt=await dec(key,unb64(f.iv),await r.arrayBuffer());}catch(e){throw inErr('bad');}if(pt.byteLength!==m.size)throw inErr('bad');
   files.push(new File([pt],String(m.name||m.key),{type:String(m.type||'application/octet-stream')}));}
@@ -276,24 +291,33 @@ async function prepareRestore(d,raw,opt={}){const key=await importDEK(raw);const
  if(bad)throw Object.assign(new Error('corrupt'),{code:'corrupt',bad});
  if(unknown&&!opt.dropUnknown)throw Object.assign(new Error('needdecoy'),{code:'needdecoy',n:unknown});
  if(!legacy)decoy=null; // nothing of the old decoy is kept → its wrap is not kept either
- return {meta,decoy,items,files:fl,mainIds,mainFileIds,stats:{items:nI,files:nF,legacy,dropped,created:d.created||'',recId:meta.rec.id}};}
+ return {meta,decoy,epoch:newEpoch(),items,files:fl,mainIds,mainFileIds,stats:{items:nI,files:nF,legacy,dropped,created:d.created||'',recId:meta.rec.id}};}
 async function commitRestore(P){await DB.run(STORES,'readwrite',t=>{const M=t.objectStore('meta'),I=t.objectStore('items'),F=t.objectStore('files'),B=t.objectStore('blobs');
-  M.put(P.meta,'vault');M.delete('quick');M.delete('bio');if(P.decoy)M.put(P.decoy,'decoy');else M.delete('decoy');I.clear();F.clear();B.clear();
+  M.put(P.meta,'vault');M.put(P.epoch,'epoch');M.delete('quick');M.delete('bio');if(P.decoy)M.put(P.decoy,'decoy');else M.delete('decoy');I.clear();F.clear();B.clear();
   P.items.forEach(r=>I.put(r,r.id));P.files.forEach(([r,b])=>{F.put(r,r.id);B.put(b,r.id);});});}
-// read everything back from the database and decrypt it with the restored key
-async function verifyRestore(P,raw){try{const key=await importDEK(raw);const sn=await snapshotAll();const I=new Map(sn.items),F=new Map(sn.files),B=new Map(sn.blobs);
+// read EVERYTHING back from the database after the restore: decrypt every item, every file's metadata, BODY and
+// thumbnail, compare sizes; records kept as-is (legacy decoy) and the key wraps must be byte-identical to what was written
+const sameBytes=(a,b)=>{if(!a||!b)return a===b;const x=new Uint8Array(a.buffer?a.buffer.slice(a.byteOffset,a.byteOffset+a.byteLength):a),y=new Uint8Array(b.buffer?b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength):b);if(x.length!==y.length)return false;for(let i=0;i<x.length;i++)if(x[i]!==y[i])return false;return true;};
+async function verifyRestore(P,raw){try{const key=await importDEK(raw);const sn=await snapshotAll();const M=new Map(sn.meta),I=new Map(sn.items),F=new Map(sn.files),B=new Map(sn.blobs);
  if(I.size!==P.items.length||F.size!==P.files.length||B.size!==P.files.length)return false;
- for(const id of P.mainIds){const r=I.get(id);if(!r)return false;const o=JSON.parse(td.decode(await dec(key,r.iv,r.ct)));if(o.id!==id)return false;}
- for(const id of P.mainFileIds){const r=F.get(id),b=B.get(id);if(!r||!b)return false;await dec(key,r.miv,r.mct);}
+ const v=M.get('vault');if(!v||!sameBytes(v.pw.ct,P.meta.pw.ct)||!sameBytes(v.rec.ct,P.meta.rec.ct)||!sameBytes(v.kdf.salt,P.meta.kdf.salt))return false;
+ if(M.get('epoch')!==P.epoch)return false;if(P.decoy){const dm=M.get('decoy');if(!dm||!sameBytes(dm.pw.ct,P.decoy.pw.ct))return false;}else if(M.has('decoy'))return false;
+ const mainI=new Set(P.mainIds),mainF=new Set(P.mainFileIds);
+ for(const r of P.items){const g=I.get(r.id);if(!g)return false;
+  if(mainI.has(r.id)){const o=JSON.parse(td.decode(await dec(key,g.iv,g.ct)));if(o.id!==r.id)return false;}else if(!sameBytes(g.ct,r.ct))return false;}
+ for(const [r,b] of P.files){const g=F.get(r.id),gb=B.get(r.id);if(!g||!gb)return false;
+  if(mainF.has(r.id)){const m=JSON.parse(td.decode(await dec(key,g.miv,g.mct)));const body=await dec(key,gb.iv,gb.ct);if(body.byteLength!==m.size)return false;
+   if(g.tct)await dec(key,g.tiv,g.tct);}else if(!sameBytes(g.mct,r.mct)||!sameBytes(gb.ct,b.ct))return false;}
  return true;}catch(e){return false;}}
 // ---- legacy decoy: move its content into the main vault (re-encrypted), then forget the decoy
-async function migrateDecoyWith(pw){const raw=await unwrapDecoy(pw);const dk=await importDEK(raw);raw.fill(0);const s=sess();const sn=await snapshotAll();const blobs=new Map(sn.blobs);const items=[],files=[];
+async function migrateDecoyWith(pw){const raw=await unwrapDecoy(pw);const dk=await importDEK(raw);raw.fill(0);const s=sess();const sn=await snapshotAll();const blobs=new Map(sn.blobs);const items=[],files=[];let left=0;
  for(const [k,r] of sn.items){let o;try{o=JSON.parse(td.decode(await dec(dk,r.iv,r.ct)));}catch(e){continue;}const e=await encWith(s.k,normItem(o));items.push([k,{id:k,iv:e.iv,ct:e.ct}]);}
- for(const [k,r] of sn.files){let m;try{m=JSON.parse(td.decode(await dec(dk,r.miv,r.mct)));}catch(e){continue;}const b=blobs.get(k);if(!b)continue;
-  const em=await encWith(s.k,m);const eb=await enc(s.k,await dec(dk,b.iv,b.ct));const tt=r.tct?await enc(s.k,await dec(dk,r.tiv,r.tct)):null;
-  files.push([k,{id:k,miv:em.iv,mct:em.ct,tiv:tt?tt.iv:null,tct:tt?tt.ct:null},{iv:eb.iv,ct:eb.ct}]);}
- s.check();await DB.run(['meta','items','files','blobs'],'readwrite',t=>{items.forEach(([k,v])=>t.objectStore('items').put(v,k));files.forEach(([k,fr,b])=>{t.objectStore('files').put(fr,k);t.objectStore('blobs').put(b,k);});t.objectStore('meta').delete('decoy');});
- bcast('data');return {items:items.length,files:files.length};}
+ for(const [k,r] of sn.files){let m;try{m=JSON.parse(td.decode(await dec(dk,r.miv,r.mct)));}catch(e){continue;}  // not a decoy record
+  // identified as decoy: it must move COMPLETELY, otherwise it stays (with the decoy key) and is reported
+  try{const b=blobs.get(k);if(!b)throw 0;const em=await encWith(s.k,m);const eb=await enc(s.k,await dec(dk,b.iv,b.ct));const tt=r.tct?await enc(s.k,await dec(dk,r.tiv,r.tct)):null;
+   files.push([k,{id:k,miv:em.iv,mct:em.ct,tiv:tt?tt.iv:null,tct:tt?tt.ct:null},{iv:eb.iv,ct:eb.ct}]);}catch(e){left++;}}
+ await DB.run(['meta','items','files','blobs'],'readwrite',t=>{items.forEach(([k,v])=>t.objectStore('items').put(v,k));files.forEach(([k,fr,b])=>{t.objectStore('files').put(fr,k);t.objectStore('blobs').put(b,k);});if(!left)t.objectStore('meta').delete('decoy');},s);
+ bcast('data');return {items:items.length,files:files.length,left};}
 
 /* ================= CSV import / export ================= */
 function parseCSV(text){text=text.replace(/^\uFEFF/,'');const rows=[];let row=[],f='',q=false;
@@ -354,4 +378,4 @@ async function copyText(v){try{await navigator.clipboard.writeText(v);}catch(e){
 /* ================= storage persistence ================= */
 async function persistStorage(){try{if(navigator.storage&&navigator.storage.persist){if(!(await navigator.storage.persisted()))await navigator.storage.persist();}}catch(e){}}
 
-window.__MODS['app-core']='1.2.1';
+window.__MODS['app-core']='1.2.2';

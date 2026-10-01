@@ -92,10 +92,14 @@ async function shareItem(it){const def=TYPES[it.type]||TYPES.note;
  attachments(it.id).forEach(f=>opts.push({id:'a:'+f.id,label:'📎 '+f.name+' · '+fmtSize(f.size),on:f.size<=25*1048576}));
  const pick=await modal(`<h3 class="mh">↗ ${T('sh_t')}</h3><p class="mtext">${T('sh_intro')}</p><label class="lbl">${T('sh_pick')}</label>
  ${opts.map(o=>`<label class="chk"><input type="checkbox" value="${esc(o.id)}" ${o.on?'checked':''}> ${esc(o.label)}</label>`).join('')}${opts.length?'':`<p class="mlbl">—</p>`}
- <div class="mact"><button class="btn" data-v="0">${T('cancel')}</button><button class="btn pri" data-v="1">${T('continue')}</button></div>`,
- {sticky:true,onOpen:(s,close)=>{$('[data-v="0"]',s).onclick=()=>close(null);$('[data-v="1"]',s).onclick=()=>close(new Set($$('input:checked',s).map(x=>x.value)));}});
+ <p class="mlbl" id="shsz"></p><div class="mact"><button class="btn" data-v="0">${T('cancel')}</button><button class="btn pri" data-v="1">${T('continue')}</button></div>`,
+ {sticky:true,onOpen:(s,close)=>{const sizes={};attachments(it.id).forEach(f=>{sizes['a:'+f.id]=f.size;});const go=$('[data-v="1"]',s),out=$('#shsz',s);
+  const upd=()=>{const tot=$$('input:checked',s).reduce((a,x)=>a+(sizes[x.value]||0),0);const over=tot>25*1048576;go.disabled=over;
+   out.textContent=tot?T('sh_size',{s:fmtSize(tot)})+(over?' — '+T('sh_over'):''):'';out.style.color=over?'var(--bad)':'';};
+  $$('input',s).forEach(x=>x.onchange=upd);upd();
+  $('[data-v="0"]',s).onclick=()=>close(null);go.onclick=()=>close(new Set($$('input:checked',s).map(x=>x.value)));}});
  if(!pick)return;const f={};Object.keys(it.f||{}).forEach(k=>{if(pick.has('f:'+k))f[k]=it.f[k];});const cf=(it.cf||[]).filter((c,i)=>pick.has('c:'+i));
- const files=[];let total=0;for(const a of attachments(it.id)){if(!pick.has('a:'+a.id))continue;if(total+a.size>25*1048576)continue;const bl=await fileBlob(a);total+=a.size;files.push({name:a.name,type:a.type,cat:a.cat,data:b64(await bl.arrayBuffer())});}
+ const files=[];for(const a of attachments(it.id)){if(!pick.has('a:'+a.id))continue;const bl=await fileBlob(a);files.push({name:a.name,type:a.type,cat:a.cat,data:b64(await bl.arrayBuffer())});}
  const payload={item:{type:it.type,title:it.title,f,cf,ic:it.ic||'',tplName:it.tplName||''},files,from:LS.get('user',''),t:Date.now()};
  const code=genShareCode(),salt=rand(16);const e=await enc(await kdf(normRec(code),salt,SHARE_ITER),te.encode(JSON.stringify(payload)));
  const file=new File([JSON.stringify({app:'VaultNest',kind:'share',format:1,salt:b64(salt),iter:SHARE_ITER,iv:b64(e.iv),ct:b64(e.ct)})],`vaultnest-share-${ymd()}-${Date.now().toString(36).slice(-4)}.json`,{type:'application/json'});
@@ -118,7 +122,7 @@ async function importShare(txt){let d;try{d=JSON.parse(txt);ub(d.salt,16);ub(d.i
  // encrypt everything with ONE captured key, then write the item + all files in ONE transaction
  const recs=[];for(const f of files){recs.push(await encFileRec(s.k,new File([unb64(f.data)],f.name.slice(0,200),{type:f.type||'application/octet-stream'}),FCATS.includes(f.cat)?f.cat:'other',it.id));s.check();}
  const ie=await encWith(s.k,it);
- try{s.check();await DB.run(['items','files','blobs'],'readwrite',t=>{t.objectStore('items').put({id:it.id,iv:ie.iv,ct:ie.ct},it.id);recs.forEach(x=>{t.objectStore('blobs').put(x.blob,x.id);t.objectStore('files').put(x.rec,x.id);});});}
+ try{s.check();await DB.run(['items','files','blobs'],'readwrite',t=>{t.objectStore('items').put({id:it.id,iv:ie.iv,ct:ie.ct},it.id);recs.forEach(x=>{t.objectStore('blobs').put(x.blob,x.id);t.objectStore('files').put(x.rec,x.id);});},s);}
  catch(e){toast(e.code==='stale'?T('op_stale'):T('save_fail',{e:e.message}),'bad');return false;}
  S.items.push(it);recs.forEach(x=>S.files.push(x.meta));bcast('data');toast(T('sh_saved'));go('item',{id:it.id});return true;}
 async function receiveShareFlow(){const [f]=await pickFile($('#fbak'));if(!f)return;const txt=await f.text();if(isShareFile(txt))await importShare(txt);else toast(T('sh_bad'),'bad');}
@@ -138,7 +142,7 @@ async function handleInbox(auto){if(!S.unlocked||!S.inboxPriv||S.inboxBusy)retur
    if(r==='del'&&await confirmDlg(T('in_delete_stuck_c'),{danger:true,ok:T('delete')}))for(const x of stuck)await inboxDelete(x.url);}
   await refreshInboxCounts();}
  finally{S.inboxBusy=false;if(S.unlocked)rerender();}}
-async function refreshInboxCounts(){let ok=0,st=0;try{for(const u of await inboxEntries()){try{await inboxRead(u);ok++;}catch(e){st++;}}}catch(e){}S.inboxCount=ok;S.inboxStuck=st;}
+async function refreshInboxCounts(){let ok=0,st=0;try{for(const u of await inboxEntries()){try{await inboxRead(u,{metaOnly:true});ok++;}catch(e){st++;}}}catch(e){}S.inboxCount=ok;S.inboxStuck=st;}
 async function inboxOne({meta,files}){
  if(files.length===1&&/json/i.test(files[0].type+files[0].name)){const txt=await files[0].text();if(isShareFile(txt))return (await importShare(txt))?'done':'later';}
  if(files.length){const items=sortItems(live().slice());
@@ -246,7 +250,7 @@ async function legacyDecoyDlg(){const ch=await menuDlg(T('dcl_t'),[['move','📦
  const pw=await promptDlg(T('dcl_pw'),{type:'password',text:ch==='move'?T('dcl_move_d'):T('dcl_d')});if(pw==null)return;
  if(ch==='del'&&!(await confirmDlg(T('dcl_del_c'),{danger:true,ok:T('delete')})))return;
  let r;try{r=ch==='move'?await migrateDecoyWith(pw):await removeDecoyWith(pw);}catch(e){toast(e.code==='stale'?T('op_stale'):T('wrong_pw'),'bad');return;}
- toast(T(ch==='move'?'dcl_moved':'dcl_done',{i:r.items,f:r.files}));await loadAll();rerender();}
+ toast(T(ch==='move'?'dcl_moved':'dcl_done',{i:r.items,f:r.files}));if(r.left)await alertDlg(T('dcl_left',{n:r.left}),T('dcl_t'));await loadAll();rerender();}
 
 /* ================= small menus / attach an existing file ================= */
 function menuDlg(title,opts){return modal(`<h3 class="mh">${esc(title)}</h3><div class="stack">${opts.map(([v,ic,l])=>`<button class="row" data-v="${v}"><span class="ic">${ic}</span><span class="rt"><b>${esc(l)}</b></span></button>`).join('')}<button class="btn" data-v="">${T('cancel')}</button></div>`,
@@ -259,4 +263,4 @@ async function attachExisting(it){const free=liveFiles().filter(f=>f.itemId!==it
  if(!r||!r.length)return false;let n=0;for(const id of r){const f=S.files.find(x=>x.id===id);if(!f)continue;const old=f.itemId;f.itemId=it.id;try{await saveFileMeta(f);n++;}catch(e){f.itemId=old;}}
  toast(T('att_done',{n}));return n>0;}
 
-window.__MODS['app-features']='1.2.1';
+window.__MODS['app-features']='1.2.2';
