@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="he" dir="rtl" data-theme="gold" data-mode="night">
+<head>
+<meta charset="utf-8">
+<!--
+  VaultNest (הכספת שלי) — AppNest
+  Single-file PWA. Everything is encrypted on the device (AES-256-GCM, PBKDF2-SHA256 600k).
+  Zero third-party code: no CDN, no fonts, no analytics. The only outside request is the
+  optional Have I Been Pwned range check (k-anonymity, 5 hash chars) — see pwnedCount().
+  CRITICAL FIXES TO KEEP (see AppNest requirements doc v13.1):
+   - SW: per-file caching (allSettled), network-first navigation w/ 4s timeout, redirect-clean (Cloudflare 308), skipWaiting
+   - navigator.storage.persist(); encrypted backup is the only recovery path
+   - Never render user data with innerHTML without esc()
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://api.pwnedpasswords.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#000000">
+<meta name="description" content="VaultNest — כספת מוצפנת לסיסמאות, כרטיסים, קודים, מסמכים ותמונות. הכול מוצפן ונשמר רק במכשיר.">
+<meta property="og:title" content="VaultNest · הכספת שלי">
+<meta property="og:description" content="כספת מוצפנת לסיסמאות, כרטיסים, קודים, מסמכים ותמונות — הכול נשמר רק במכשיר.">
+<meta property="og:image" content="icon-512.png">
+<title>VaultNest · הכספת שלי</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#000;--surf:#0E0D0A;--surf2:#1A170F;--line:rgba(201,162,74,.26);
+  --tx:#EFE7D6;--mut:#9C937F;--bad:#E4675E;--ok:#74C27A;--warn:#E6AE45;
+  --accN:#C9A24A;--accD:#86661A;--acc:var(--accN);--onacc:#0B0906;
+  --fs:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Hebrew","Noto Sans",Arial,sans-serif;
+  --fd:"Noto Serif Hebrew","Frank Ruhl Libre","David",Georgia,"Times New Roman",serif;
+  --fm:ui-monospace,"Roboto Mono","Cascadia Mono",Consolas,"Courier New",monospace;
+  color-scheme:dark}
+html[data-theme=silver]{--accN:#C3CAD3;--accD:#4C5763;--line:rgba(195,202,211,.24);--surf:#0C0D0F;--surf2:#16181C}
+html[data-theme=copper]{--bg:#040A13;--surf:#0A1523;--surf2:#10203A;--accN:#D38C4F;--accD:#98561F;--line:rgba(211,140,79,.28)}
+html[data-theme=jade]{--bg:#020E09;--surf:#071A12;--surf2:#0C2519;--accN:#63C79C;--accD:#1C7550;--line:rgba(99,199,156,.26)}
+html[data-theme=ruby]{--bg:#0D0205;--surf:#19060B;--surf2:#240A11;--accN:#E3B27C;--accD:#8B3A40;--line:rgba(227,178,124,.26)}
+html[data-mode=day]{--bg:#F4F1EA;--surf:#FFFFFF;--surf2:#ECE7DC;--tx:#1C1913;--mut:#665F50;--acc:var(--accD);--line:rgba(0,0,0,.14);--onacc:#FFFFFF;--bad:#B63A32;--ok:#2E7D32;--warn:#9A6400;color-scheme:light}
+html,body{background:var(--bg);color:var(--tx);font-family:var(--fs);font-size:16px;line-height:1.5;min-height:100%}
+body{padding-bottom:env(safe-area-inset-bottom);overflow-x:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.skip{position:absolute;inset-inline-start:-999px;top:0}
+.skip:focus{inset-inline-start:8px;z-index:99;background:var(--acc);color:var(--onacc);padding:8px 12px;border-radius:8px}
+.wrap{max-width:560px;margin:0 auto;padding:12px 16px 40px}
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top)) max(12px,calc((100% - 560px)/2 + 12px)) 10px;background:var(--bg);border-bottom:1px solid var(--line)}
+.top .ttl{flex:1;min-width:0}
+.top .ttl b{display:block;font-family:var(--fd);font-size:1.25rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .ttl small{display:block;color:var(--mut);font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);display:grid;place-items:center;font-size:1.15rem;flex:none}
+.backb{height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--acc);color:var(--acc);font-weight:700;display:flex;align-items:center;gap:6px;flex:none}
+.btn{min-height:46px;padding:10px 16px;border-radius:12px;border:1px solid var(--acc);color:var(--acc);font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center;line-height:1.25}
+.btn.pri{background:var(--acc);color:var(--onacc)}
+.btn.big{min-height:56px;font-size:1.08rem}
+.btn.wide{width:100%}
+.btn.danger{border-color:var(--bad);color:var(--bad)}
+.btn.pri.danger{background:var(--bad);color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.sm{min-height:38px;padding:6px 12px;font-size:.9rem}
+.link{color:var(--acc);text-decoration:underline;padding:10px;font-size:.95rem}
+.inp{width:100%;min-height:48px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surf);color:var(--tx)}
+.inp:focus{border-color:var(--acc);outline:none}
+select.inp{appearance:auto}
+textarea.inp{min-height:110px;resize:vertical}
+.mono{font-family:var(--fm);letter-spacing:.02em}
+.lbl{display:block;font-size:.88rem;color:var(--mut);margin:12px 0 6px}
+.pwbox{position:relative;direction:ltr}
+.pwbox .inp{padding-right:52px}
+.pwbox .eye{position:absolute;right:4px;top:4px;width:44px;height:40px;border-radius:10px}
+.err{color:var(--bad);min-height:1.4em;font-size:.92rem;margin-top:6px}
+.meter{height:6px;border-radius:3px;background:var(--surf2);margin-top:8px;overflow:hidden}
+.meter i{display:block;height:100%;width:0;transition:width .2s}
+.mlbl{font-size:.84rem;color:var(--mut);margin-top:4px}
+.search{margin:6px 0 14px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.tile{border:1px solid var(--line);border-radius:14px;padding:14px;text-align:start;display:flex;flex-direction:column;gap:4px;background:var(--surf);min-height:96px}
+.tile .ti{font-size:1.4rem;line-height:1}
+.tile b{font-weight:600;font-size:.98rem;line-height:1.3}
+.tile small{color:var(--mut);font-size:.84rem}
+.tile.wide{grid-column:1/-1;flex-direction:row;align-items:center;gap:12px;min-height:0}
+.tile.wide .tx{flex:1}
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sec{margin:24px 0 10px;font-family:var(--fd);font-size:1.08rem;color:var(--acc);font-weight:600}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surf);margin-bottom:10px}
+.card p{line-height:1.6}
+.row{width:100%;display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surf);margin-bottom:8px;text-align:start;user-select:none;-webkit-user-select:none}
+.row .ic{font-size:1.35rem;width:36px;text-align:center;flex:none}
+.row .rt{flex:1;min-width:0}
+.row .rt b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .rt small{display:block;color:var(--mut);font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .ra{display:flex;gap:6px;flex:none}
+.star{color:var(--acc)}
+.empty{text-align:center;color:var(--mut);padding:36px 16px;line-height:1.6}
+.fld{border-bottom:1px solid var(--line);padding:12px 0}
+.fld:last-child{border-bottom:0}
+.fld>label{display:block;font-size:.82rem;color:var(--mut)}
+.fline{display:flex;align-items:center;gap:6px}
+.fv{flex:1;min-width:0;word-break:break-all;font-size:1.05rem;padding:4px 0}
+.fv.pre{white-space:pre-wrap;word-break:break-word}
+.fa{width:42px;height:42px;border-radius:10px;border:1px solid var(--line);display:grid;place-items:center;flex:none;font-size:1rem}
+.badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.badge{display:inline-block;font-size:.78rem;padding:2px 9px;border-radius:99px;border:1px solid currentColor}
+.b-bad{color:var(--bad)}.b-ok{color:var(--ok)}.b-warn{color:var(--warn)}.b-mut{color:var(--mut)}
+.banner{border:1px solid var(--warn);border-radius:14px;padding:12px 14px;margin:0 0 14px;display:flex;gap:10px;align-items:center;background:var(--surf)}
+.banner p{flex:1;font-size:.92rem;line-height:1.5}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{min-height:40px;padding:6px 12px;border-radius:10px;border:1px solid var(--line);font-size:.92rem}
+.seg button[aria-pressed=true]{border-color:var(--acc);color:var(--acc);font-weight:700;box-shadow:inset 0 0 0 1px var(--acc)}
+.swatches{display:flex;gap:12px;flex-wrap:wrap}
+.sw{width:52px;height:52px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center}
+.sw i{width:22px;height:22px;border-radius:50%;display:block}
+.sw[aria-pressed=true]{border-color:var(--tx);box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--acc)}
+.chk{display:flex;gap:10px;align-items:center;padding:10px 0;line-height:1.4}
+.chk input{width:22px;height:22px;accent-color:var(--acc);flex:none}
+.foot{text-align:center;color:var(--mut);font-size:.8rem;padding:22px 0 30px}
+.foot b{color:var(--acc);font-weight:700;letter-spacing:.02em}
+.fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ft{aspect-ratio:1;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surf);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px;position:relative;user-select:none;-webkit-user-select:none}
+.ft img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ft span{font-size:1.9rem}
+.ft small{font-size:.72rem;color:var(--mut);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;scrollbar-width:none}
+.chips button{flex:none;border:1px solid var(--line);border-radius:99px;padding:6px 14px;font-size:.88rem;min-height:36px}
+.chips button[aria-pressed=true]{border-color:var(--acc);color:var(--acc);font-weight:700}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#modals{position:fixed;inset:0;z-index:50;pointer-events:none}
+.mwrap{position:absolute;inset:0;background:rgba(0,0,0,.76);display:flex;align-items:flex-end;justify-content:center;pointer-events:auto;animation:fade .15s}
+.sheet{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--surf);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));animation:up .2s ease-out}
+.mh{font-family:var(--fd);font-size:1.2rem;margin-bottom:6px;font-weight:600;word-break:break-word}
+.mtext{margin:6px 0 12px;line-height:1.6}
+.mact{display:flex;gap:10px;margin-top:14px}
+.mact .btn{flex:1}
+.mwrap.out{opacity:0;transition:opacity .18s}
+@keyframes up{from{transform:translateY(24px);opacity:.4}}
+@keyframes fade{from{opacity:0}}
+#toasts{position:fixed;left:0;right:0;bottom:calc(22px + env(safe-area-inset-bottom));z-index:80;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:0 12px}
+.toast{background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:600;max-width:520px;text-align:center;transition:opacity .3s;line-height:1.4}
+.toast.bad{background:var(--bad);color:#fff}
+.toast.out{opacity:0}
+#lock{position:fixed;inset:0;z-index:40;background:var(--bg);overflow:auto;transition:opacity .35s}
+#lock.gone{opacity:0;pointer-events:none}
+.lockin{max-width:420px;margin:0 auto;padding:calc(24px + env(safe-area-inset-top)) 20px 30px;display:flex;flex-direction:column;align-items:center}
+.langbar{align-self:stretch;display:flex;justify-content:flex-end;margin-bottom:4px}
+.dialwrap{width:min(190px,48vw);margin:6px 0 12px}
+.dial{width:100%;height:auto;display:block;overflow:visible}
+.d-o{fill:none;stroke:var(--acc);stroke-width:2}
+.d-t line{stroke:var(--acc);stroke-width:1.5;opacity:.65}
+.d-i{fill:var(--surf);stroke:var(--acc);stroke-width:1.5}
+.d-s line{stroke:var(--acc);stroke-width:3;stroke-linecap:round;opacity:.5}
+.d-h{fill:var(--bg);stroke:var(--acc);stroke-width:2}
+.d-k{fill:var(--acc)}
+.d-w{transform-origin:110px 110px;transition:transform .7s cubic-bezier(.5,0,.2,1)}
+.dial.open .d-w{transform:rotate(-120deg)}
+.dial.shake{animation:shake .38s}
+@keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+.brand{text-align:center;margin-bottom:16px}
+.brand h1{font-family:var(--fd);font-size:2rem;font-weight:600;color:var(--acc);line-height:1.2}
+.brand p{color:var(--mut)}
+.lockbody{width:100%}
+.stack{display:flex;flex-direction:column;gap:6px;width:100%}
+.quickrow{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:16px 0 4px}
+.lockbody .link{display:block;margin:8px auto 0}
+.ctitle{font-family:var(--fd);font-size:1.35rem;text-align:center}
+.ob{text-align:center}
+.ob h2{font-family:var(--fd);font-size:1.4rem;margin-bottom:10px;font-weight:600}
+.ob p{color:var(--mut);line-height:1.65;min-height:6.6em}
+.dots{display:flex;gap:6px;justify-content:center;margin:14px 0}
+.dots i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.dots i.on{background:var(--acc)}
+.reccode{font-family:var(--fm);font-size:1.2rem;text-align:center;padding:16px 10px;border:1px dashed var(--acc);border-radius:14px;margin:12px 0;word-break:break-all;direction:ltr;letter-spacing:.06em;color:var(--acc)}
+.pdots{display:flex;gap:12px;justify-content:center;margin:14px 0;direction:ltr}
+.pdots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--acc)}
+.pdots i.on{background:var(--acc)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:300px;margin:0 auto;direction:ltr}
+.pad button{height:60px;border-radius:14px;border:1px solid var(--line);font-size:1.45rem;font-weight:600}
+.pad button:active{background:var(--surf2)}
+.pat{width:min(270px,78vw);display:block;margin:6px auto;touch-action:none;user-select:none;-webkit-user-select:none}
+.pat .pd{fill:var(--mut)}
+.pat .pd.on{fill:var(--acc)}
+.pat .pr{fill:none;stroke:var(--line);stroke-width:1.5}
+.pat polyline{fill:none;stroke:var(--acc);stroke-width:5;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.viewer img,.viewer video{max-width:100%;max-height:60vh;display:block;margin:8px auto;border-radius:10px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:.93rem}
+.kv:last-child{border-bottom:0}
+.kv span:first-child{color:var(--mut)}
+.kv span:last-child{text-align:end;word-break:break-word}
+.range{width:100%;accent-color:var(--acc);height:32px}
+.genout{font-family:var(--fm);font-size:1.25rem;text-align:center;padding:18px 12px;border:1px solid var(--acc);border-radius:14px;word-break:break-all;direction:ltr;margin-bottom:8px;min-height:3.4em}
+.score{font-family:var(--fd);font-size:2.6rem;color:var(--acc);text-align:center;line-height:1}
+.hide{display:none!important}
+.veil #view,.veil #lock,.veil #modals{filter:blur(24px)}
+@media (min-width:600px){.fgrid{grid-template-columns:repeat(4,1fr)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<a class="skip" href="#view">דלג לתוכן</a>
+<div id="view" tabindex="-1"></div>
+<div id="lock" hidden></div>
+<div id="modals"></div>
+<div id="toasts" aria-live="polite"></div>
+<input type="file" id="fpick" multiple hidden>
+<input type="file" id="fcam" accept="image/*" capture="environment" hidden>
+<input type="file" id="fbak" accept=".json,application/json" hidden>
+<input type="file" id="fcsv" accept=".csv,text/csv,text/plain" hidden>
+<script>
+'use strict';
+/* ================= i18n ================= */
+const LANGS=[{c:'he',n:'עברית'},{c:'en',n:'English'}]; // ru/es/ar: next round (keys fall back to English)
+const RTL=['he','ar'];
+const LANG={
+he:{
+app_sub:'הכספת שלי',skip_link:'דלג לתוכן',
+lock_title:'הכספת נעולה',master_pw:'סיסמה ראשית',unlock:'פתח',unlocking:'פותח…',wrong_pw:'סיסמה שגויה',
+wait_s:'יותר מדי ניסיונות. נסה שוב בעוד {s} שניות',use_bio:'טביעת אצבע',use_pin:'קוד',use_pattern:'סימון',
+forgot:'שכחתי את הסיסמה',rec_enter:'הזן את קוד השחזור',rec_wrong:'קוד השחזור שגוי',rec_ok_set_new:'הקוד נכון. בחר סיסמה ראשית חדשה',
+back:'חזרה',cancel:'ביטול',save:'שמור',delete:'מחק',edit:'ערוך',close:'סגור',copy:'העתק',copied:'הועתק',show:'הצג',hide:'הסתר',
+open:'פתח',done:'סיום',next:'הבא',skip:'דלג',confirm:'אישור',later:'אחר כך',continue:'המשך',
+ob1_t:'ברוך הבא לכספת',ob1_d:'מקום אחד לסיסמאות, כרטיסי אשראי, קודים, מסמכים ותמונות חשובות.',
+ob2_t:'הכול מוצפן, הכול אצלך',ob2_d:'המידע מוצפן ב-AES-256 לפני שהוא נשמר, ונשאר רק במכשיר הזה. שום דבר לא נשלח לשרת.',
+ob3_t:'סיסמה ראשית אחת',ob3_d:'היא המפתח לכל השאר, ואין לנו דרך לשחזר אותה. לכן תקבל גם קוד שחזור — כדאי לרשום אותו על נייר.',
+ob4_t:'פתיחה מהירה',ob4_d:'אחרי ההגדרה אפשר לפתוח עם טביעת אצבע, קוד או סימון על המסך.',
+ob5_t:'גיבוי הוא הביטוח שלך',ob5_d:'אם המכשיר אבד או שנתוני הדפדפן נמחקו, רק קובץ גיבוי יחזיר את המידע. הגיבוי עצמו מוצפן.',
+ob_start:'בוא נתחיל',
+create_t:'יצירת סיסמה ראשית',create_d:'לפחות 10 תווים. משפט קצר שקל לך לזכור עדיף על מילה מסובכת.',
+new_pw:'סיסמה ראשית חדשה',pw_confirm:'הקלד שוב',pw_mismatch:'הסיסמאות לא תואמות',pw_short:'צריך לפחות 10 תווים',
+pw_weak_warn:'הסיסמה הזו חלשה, וכל האבטחה של הכספת נשענת עליה. להמשיך בכל זאת?',create_btn:'צור את הכספת',creating:'יוצר ומצפין…',
+restore_existing:'יש לי כבר גיבוי — שחזר ממנו',
+str_0:'חלשה מאוד',str_1:'חלשה',str_2:'בינונית',str_3:'חזקה',str_4:'חזקה מאוד',
+rec_t:'קוד השחזור שלך',rec_d:'זה הקוד היחיד שיפתח את הכספת אם תשכח את הסיסמה הראשית. רשום אותו על נייר ושמור במקום בטוח — לא בטלפון. הוא לא יוצג שוב.',
+rec_check:'רשמתי את הקוד במקום בטוח',rec_copy:'העתק קוד',
+quick_offer_t:'להוסיף פתיחה מהירה?',quick_offer_d:'כדי לא להקליד את הסיסמה הראשית בכל פעם. אפשר לשנות בכל רגע בהגדרות.',
+search_ph:'חיפוש בכספת…',cat_all:'הכול',cat_fav:'מועדפים',files:'קבצים ותמונות',
+t_login:'סיסמאות ואתרים',t_card:'כרטיסי אשראי',t_code:'קודים',t_wifi:'רשתות Wi-Fi',t_bank:'חשבונות בנק',t_identity:'מסמכים מזהים',t_note:'פתקים מאובטחים',
+ts_login:'סיסמה לאתר או אפליקציה',ts_card:'כרטיס אשראי',ts_code:'קוד (אזעקה, דלת, כספת…)',ts_wifi:'רשת Wi-Fi',ts_bank:'חשבון בנק',ts_identity:'מסמך מזהה',ts_note:'פתק מאובטח',
+add_item:'הוסף לכספת',add_what:'מה להוסיף?',add_files:'קבצים או תמונות',
+gen_t:'מחולל סיסמאות',health_t:'בריאות הסיסמאות',settings:'הגדרות',about:'אודות',lock_now:'נעל עכשיו',
+items_n:'{n} פריטים',
+backup_nag:'עברו {d} ימים מהגיבוי האחרון.',backup_never:'עדיין לא יצרת גיבוי. בלי גיבוי, ניקוי נתוני הדפדפן ימחק את הכספת.',backup_now:'גבה עכשיו',
+empty_list:'עדיין אין כאן כלום. לחץ על ״הוסף לכספת״ כדי להתחיל.',no_results:'לא נמצאו פריטים',
+trash:'סל מחזור',trash_empty:'סל המחזור ריק',trash_note:'פריטים נמחקים מכאן לצמיתות אחרי 30 יום.',restore:'שחזר',delete_forever:'מחק לצמיתות',
+moved_trash:'הועבר לסל המחזור',restored:'שוחזר',empty_trash:'רוקן את הסל',empty_trash_c:'למחוק לצמיתות את כל מה שבסל? אי אפשר לבטל.',
+f_title:'שם',f_username:'שם משתמש / אימייל',f_password:'סיסמה',f_url:'כתובת אתר',f_notes:'הערות',f_cardholder:'שם בעל הכרטיס',
+f_number:'מספר כרטיס',f_expiry:'תוקף',f_cvv:'CVV (3 ספרות בגב)',f_cardPin:'קוד סודי',f_issuer:'חברת אשראי / בנק',f_code:'קוד',
+f_ssid:'שם הרשת',f_security:'סוג אבטחה',sec_none:'פתוחה (בלי סיסמה)',f_bankName:'בנק',f_branch:'סניף',f_account:'מספר חשבון',
+f_docType:'סוג המסמך',f_fullName:'שם מלא',f_docNumber:'מספר מסמך',f_issued:'תאריך הנפקה',f_docExpiry:'תאריך תפוגה',f_fav:'סמן כמועדף',
+title_ph_login:'למשל: Gmail, בנק הפועלים, נטפליקס',title_ph_card:'למשל: ויזה כאל',title_ph_code:'למשל: אזעקה בבית',title_ph_wifi:'למשל: הרשת בבית',
+title_ph_bank:'למשל: חשבון עו״ש',title_ph_identity:'למשל: דרכון',title_ph_note:'למשל: קודי גיבוי של Google',
+new_item:'פריט חדש',edit_item:'עריכה',need_title:'צריך לתת שם לפריט',saved:'נשמר',save_fail:'השמירה נכשלה: {e}',
+del_confirm:'להעביר את ״{n}״ לסל המחזור?',del_forever_c:'למחוק לצמיתות? אי אפשר לבטל.',
+open_site:'פתח אתר',created_at:'נוצר {d}',updated_at:'עודכן {d}',fav_on:'נוסף למועדפים',fav_off:'הוסר מהמועדפים',
+reused_n:'משמשת ב-{n} פריטים',old_pw:'לא הוחלפה מעל שנה',
+check_breach:'בדוק אם דלפה',breach_t:'בדיקת דליפות',
+breach_consent:'הבדיקה שולחת לשירות Have I Been Pwned רק 5 תווים מתוך ״טביעה״ מוצפנת של הסיסמה — לא את הסיסמה עצמה ולא שום פרט אחר. להמשיך?',
+breach_found:'הופיעה {n} פעמים בדליפות ידועות — מומלץ להחליף',breach_clean:'לא נמצאה בדליפות ידועות',breach_err:'הבדיקה נכשלה. יש חיבור לאינטרנט?',checking:'בודק…',
+exp_soon:'פג תוקף בעוד {d} ימים',exp_past:'פג תוקף',
+gen_length:'אורך: {n}',gen_lower:'אותיות קטנות (a-z)',gen_upper:'אותיות גדולות (A-Z)',gen_digits:'ספרות (0-9)',gen_symbols:'סימנים (!@#)',
+gen_ambig:'בלי תווים דומים (O/0, l/1)',gen_new:'צור סיסמה',bits:'חוזק משוער: {b} ביט',
+h_score:'ציון הכספת',h_weak:'סיסמאות חלשות',h_reused:'סיסמאות שחוזרות על עצמן',h_old:'לא הוחלפו מעל שנה',h_expiring:'כרטיסים ומסמכים שפג תוקפם או יפוג בקרוב',
+h_breached:'סיסמאות שנמצאו בדליפות',h_all_good:'אין כאן בעיות',h_checkall:'בדוק את כל הסיסמאות בדליפות',h_checking:'בודק {i} מתוך {n}…',
+h_none:'עדיין אין סיסמאות לבדוק.',h_note:'החוזק הוא הערכה לפי אורך וגיוון התווים — לא הבטחה.',
+files_add:'הוסף קבצים',files_camera:'צלם',file_cat:'קטגוריה',file_name:'שם הקובץ',
+fc_all:'הכול',fc_id:'תעודות',fc_money:'כספים',fc_home:'בית',fc_car:'רכב',fc_health:'בריאות',fc_other:'אחר',
+files_empty:'אין עדיין קבצים. אפשר להוסיף תמונות, PDF וכל קובץ אחר — הם מוצפנים לפני השמירה.',
+encrypting:'מצפין {i} מתוך {n}…',file_big:'״{n}״ גדול מ-100MB ולא נוסף',files_added:'{n} קבצים נוספו מוצפנים',
+orig_note:'הקובץ המקורי עדיין נמצא בגלריה או בתיקייה שממנה בחרת. אם אתה רוצה שיהיה רק בכספת — מחק אותו משם ידנית. (תמונה שצולמה מתוך הכספת לא נשמרת בגלריה.)',
+file_share:'שתף',file_download:'הורד',file_open:'פתח',download_warn:'קובץ שמורד או משותף יוצא מהכספת לא מוצפן.',file_fail:'לא הצלחתי לפתוח את הקובץ',
+s_user:'שם משתמש',s_user_ph:'שם או כינוי (מופיע בגיבויים)',s_lang:'שפה',s_look:'מראה',s_theme:'ערכת צבע',s_mode:'מצב תצוגה',mode_night:'🌙 לילה',mode_day:'☀️ יום',
+th_gold:'שחור וזהב',th_silver:'שחור וכסף',th_copper:'לילה ונחושת',th_jade:'ירקן',th_ruby:'בורדו',
+s_security:'אבטחה',s_autolock:'נעילה אוטומטית כשיוצאים מהאפליקציה',al_0:'מיד',al_1:'אחרי דקה',al_5:'אחרי 5 דקות',al_15:'אחרי 15 דקות',
+idle_note:'בנוסף, הכספת ננעלת אחרי 10 דקות בלי שימוש.',
+s_clip:'ניקוי הלוח אחרי העתקה',clip_off:'כבוי',clip_s:'{n} שניות',clip_note:'הניקוי עובד כשהאפליקציה פתוחה על המסך; אחרת הוא יקרה בחזרה אליה.',
+s_quick:'פתיחה מהירה',q_none:'לא מוגדרת',q_is_pin:'פעילה: קוד 6 ספרות',q_is_pattern:'פעילה: סימון על המסך',q_set_pin:'הגדר קוד',q_set_pattern:'הגדר סימון',q_remove:'בטל',
+q_note:'קוד וסימון הם נוחות, לא ההגנה הראשית. אחרי 5 ניסיונות שגויים הם מתבטלים ונדרשת הסיסמה הראשית.',
+q_removed:'הפתיחה המהירה בוטלה',s_bio:'טביעת אצבע',bio_set:'הפעל טביעת אצבע',bio_on:'פעילה',bio_off:'לא פעילה',bio_remove:'בטל',
+bio_unsupported:'המכשיר או הדפדפן לא תומכים בטביעת אצבע מאובטחת לכספת. צריך Chrome עדכני באנדרואיד.',
+bio_note:'יופיעו שתי בקשות לטביעת אצבע — אחת ליצירה ואחת לאימות. טביעת האצבע עצמה לא יוצאת מהטלפון.',
+bio_ok:'טביעת האצבע הופעלה',bio_fail:'טביעת האצבע בוטלה או נכשלה',bio_removed:'טביעת האצבע בוטלה',
+s_change_pw:'שנה סיסמה ראשית',cur_pw:'סיסמה נוכחית',pw_changed:'הסיסמה הראשית עודכנה',
+s_new_rec:'צור קוד שחזור חדש',new_rec_c:'ייווצר קוד שחזור חדש והקוד הקודם יפסיק לעבוד. להמשיך?',
+s_backup:'גיבוי והעברה',b_export:'צור גיבוי מוצפן',b_import:'שחזר מגיבוי',b_last:'גיבוי אחרון: {d}',b_never:'עוד לא נוצר גיבוי',
+b_hint:'הגיבוי מוצפן ונפתח רק עם הסיסמה הראשית (או קוד השחזור) שהייתה בזמן יצירתו. בטלפון אפשר לשמור אותו ישר ל-Google Drive דרך ״שתף״.',
+b_ready:'הגיבוי מוכן',b_share:'שתף (Drive, מייל…)',b_save:'שמור קובץ',b_made:'הגיבוי נשמר',
+b_pw_prompt:'סיסמה ראשית של הגיבוי',b_pw_text:'הזן את הסיסמה הראשית שהייתה בזמן יצירת הגיבוי.',
+b_replace:'השחזור יחליף את כל התוכן הנוכחי בכספת בתוכן הגיבוי. להמשיך?',b_restored:'הכספת שוחזרה מהגיבוי',b_bad:'הקובץ אינו גיבוי תקין של VaultNest',
+b_restoring:'משחזר…',b_quick_note:'אחרי שחזור צריך להגדיר מחדש פתיחה מהירה וטביעת אצבע.',
+csv_import:'ייבא סיסמאות מקובץ CSV',csv_note:'מתאים לקבצים שיוצאו מ-Chrome / Google Password Manager, Bitwarden ו-Firefox.',
+csv_done:'יובאו {n} סיסמאות ({s} כפולות דולגו)',csv_delete_hint:'עכשיו מחק את קובץ ה-CSV מהמכשיר — הוא לא מוצפן.',csv_none:'לא נמצאו סיסמאות בקובץ',
+csv_export:'ייצא סיסמאות ל-CSV (לא מוצפן)',csv_export_t:'ייצוא לא מוצפן',
+csv_export_warn:'הקובץ יכיל את כל הסיסמאות בטקסט גלוי, וכל מי שיראה אותו יוכל לקרוא אותן. השתמש בזה רק כדי לעבור למנהל סיסמאות אחר, ומחק את הקובץ מיד אחר כך. הקלד ״{w}״ כדי להמשיך.',
+export_word:'ייצא',csv_exported:'{n} סיסמאות יוצאו',
+s_storage:'אחסון',st_persist_ok:'הדפדפן אישר אחסון קבוע — הוא לא ימחק את הכספת לבד כשחסר מקום.',
+st_persist_no:'הדפדפן לא אישר אחסון קבוע. הוא עלול למחוק נתונים כשחסר מקום — גבה לעיתים קרובות.',st_used:'בשימוש באחסון הדפדפן: {u}',
+shared_origin:'שים לב: הכספת רצה כרגע בכתובת משותפת ({h}) יחד עם אפליקציות אחרות. ניקוי נתוני אתר של אחת מהן ימחק גם את הכספת. עדיף להעביר אותה לכתובת משלה, ועד אז — לגבות.',
+s_help:'עזרה',s_guide:'מדריך',s_privacy:'מדיניות פרטיות',
+s_danger:'מחיקה',reset_all:'מחק את כל הכספת מהמכשיר',reset_c1:'כל הסיסמאות, הקבצים וההגדרות יימחקו מהמכשיר. אי אפשר לבטל. להמשיך?',
+reset_c2:'הקלד ״{w}״ לאישור סופי',reset_word:'מחק',reset_done:'הכספת נמחקה',
+ab_version:'גרסה',ab_dev:'פותח',ab_platform:'פלטפורמה',ab_storage:'אחסון',ab_storage_v:'מוצפן, על המכשיר בלבד',ab_license:'רישיון',
+ab_store:'חנות AppNest',ab_share:'שתף את האפליקציה',ab_feedback:'שלח משוב',ab_security:'איך זה מאובטח',
+sec_text:'לכל כספת נוצר מפתח אקראי של 256 ביט שמצפין כל פריט וכל קובץ (AES-256-GCM). המפתח עצמו נעול בסיסמה הראשית (PBKDF2-SHA256, 600,000 סבבים) ובנפרד בקוד השחזור. הסיסמה הראשית לא נשמרת בשום מקום. טביעת אצבע משתמשת במנגנון passkey של הטלפון (WebAuthn PRF). אין שרת, אין חשבון, אין קוד של צד שלישי.',
+ab_disclaimer:'VaultNest מצפין את המידע במכשיר שלך, אבל האבטחה תלויה גם בסיסמה הראשית, בגיבויים ובמכשיר עצמו. מי שיש לו גישה לטלפון פתוח ולסיסמה — יכול לפתוח. אם תאבד גם את הסיסמה הראשית וגם את קוד השחזור, אין דרך לשחזר את המידע. השימוש באחריות המשתמש.',
+ab_diag:'דוח אבחון',ab_diag_note:'הדוח לא כולל שום תוכן מהכספת.',
+pin_enter:'הזן קוד',pin_new:'בחר קוד בן 6 ספרות',pin_again:'הזן את הקוד שוב',pin_mismatch:'הקודים לא תואמים',
+pat_enter:'צייר את הסימון',pat_draw:'צייר סימון — לפחות 4 נקודות',pat_again:'צייר שוב לאישור',pat_short:'צריך לפחות 4 נקודות',pat_mismatch:'הסימונים לא תואמים',
+quick_set_ok:'הפתיחה המהירה הוגדרה',quick_wrong:'שגוי. נותרו {n} ניסיונות',
+quick_wiped:'יותר מדי ניסיונות שגויים. הפתיחה המהירה בוטלה — פתח עם הסיסמה הראשית.',
+locked:'הכספת ננעלה',
+fatal_crypto:'הדפדפן הזה לא תומך בהצפנה שהכספת צריכה. פתח אותה בכתובת https בדפדפן Chrome עדכני.',
+fatal_storage:'הדפדפן חוסם אחסון מקומי (אולי גלישה בסתר). הכספת לא יכולה לשמור כאן מידע.',
+fatal_file:'האפליקציה נפתחה מקובץ מקומי. פתח אותה מהכתובת באינטרנט כדי שההצפנה והשמירה יעבדו.',
+err_generic:'משהו השתבש: {e}'
+},
+en:{
+app_sub:'My vault',skip_link:'Skip to content',
+lock_title:'Vault locked',master_pw:'Master password',unlock:'Unlock',unlocking:'Unlocking…',wrong_pw:'Wrong password',
+wait_s:'Too many attempts. Try again in {s} seconds',use_bio:'Fingerprint',use_pin:'PIN',use_pattern:'Pattern',
+forgot:'I forgot my password',rec_enter:'Enter your recovery code',rec_wrong:'Wrong recovery code',rec_ok_set_new:'Code accepted. Choose a new master password',
+back:'Back',cancel:'Cancel',save:'Save',delete:'Delete',edit:'Edit',close:'Close',copy:'Copy',copied:'Copied',show:'Show',hide:'Hide',
+open:'Open',done:'Done',next:'Next',skip:'Skip',confirm:'Confirm',later:'Later',continue:'Continue',
+ob1_t:'Welcome to your vault',ob1_d:'One place for passwords, credit cards, codes, documents and important photos.',
+ob2_t:'Encrypted, and it stays with you',ob2_d:'Everything is encrypted with AES-256 before it is saved, and stays on this device only. Nothing is sent to a server.',
+ob3_t:'One master password',ob3_d:'It unlocks everything else, and there is no way for us to recover it. That is why you also get a recovery code — write it down on paper.',
+ob4_t:'Quick unlock',ob4_d:'After setup you can unlock with your fingerprint, a PIN or a screen pattern.',
+ob5_t:'Backups are your insurance',ob5_d:'If the phone is lost or browser data is cleared, only a backup file brings your data back. The backup itself is encrypted.',
+ob_start:"Let's start",
+create_t:'Create a master password',create_d:'At least 10 characters. A short sentence you remember beats a complicated word.',
+new_pw:'New master password',pw_confirm:'Type it again',pw_mismatch:"Passwords don't match",pw_short:'At least 10 characters',
+pw_weak_warn:'This password is weak, and all of the vault security relies on it. Continue anyway?',create_btn:'Create the vault',creating:'Creating and encrypting…',
+restore_existing:'I already have a backup — restore it',
+str_0:'Very weak',str_1:'Weak',str_2:'Fair',str_3:'Strong',str_4:'Very strong',
+rec_t:'Your recovery code',rec_d:'This is the only code that opens the vault if you forget the master password. Write it on paper and keep it somewhere safe — not on the phone. It will not be shown again.',
+rec_check:'I wrote the code down somewhere safe',rec_copy:'Copy code',
+quick_offer_t:'Add quick unlock?',quick_offer_d:'So you do not have to type the master password every time. You can change this anytime in Settings.',
+search_ph:'Search the vault…',cat_all:'All',cat_fav:'Favorites',files:'Files & photos',
+t_login:'Passwords & sites',t_card:'Credit cards',t_code:'Codes',t_wifi:'Wi-Fi networks',t_bank:'Bank accounts',t_identity:'ID documents',t_note:'Secure notes',
+ts_login:'Website or app login',ts_card:'Credit card',ts_code:'Code (alarm, door, safe…)',ts_wifi:'Wi-Fi network',ts_bank:'Bank account',ts_identity:'ID document',ts_note:'Secure note',
+add_item:'Add to vault',add_what:'What would you like to add?',add_files:'Files or photos',
+gen_t:'Password generator',health_t:'Password health',settings:'Settings',about:'About',lock_now:'Lock now',
+items_n:'{n} items',
+backup_nag:'{d} days since your last backup.',backup_never:'You have no backup yet. Without one, clearing browser data deletes the vault.',backup_now:'Back up now',
+empty_list:'Nothing here yet. Tap "Add to vault" to start.',no_results:'No items found',
+trash:'Trash',trash_empty:'Trash is empty',trash_note:'Items here are permanently deleted after 30 days.',restore:'Restore',delete_forever:'Delete forever',
+moved_trash:'Moved to trash',restored:'Restored',empty_trash:'Empty trash',empty_trash_c:'Permanently delete everything in the trash? This cannot be undone.',
+f_title:'Name',f_username:'Username / email',f_password:'Password',f_url:'Website address',f_notes:'Notes',f_cardholder:'Cardholder name',
+f_number:'Card number',f_expiry:'Expiry',f_cvv:'CVV (3 digits on the back)',f_cardPin:'PIN',f_issuer:'Card company / bank',f_code:'Code',
+f_ssid:'Network name',f_security:'Security type',sec_none:'Open (no password)',f_bankName:'Bank',f_branch:'Branch',f_account:'Account number',
+f_docType:'Document type',f_fullName:'Full name',f_docNumber:'Document number',f_issued:'Issue date',f_docExpiry:'Expiry date',f_fav:'Mark as favorite',
+title_ph_login:'e.g. Gmail, my bank, Netflix',title_ph_card:'e.g. Visa',title_ph_code:'e.g. Home alarm',title_ph_wifi:'e.g. Home network',
+title_ph_bank:'e.g. Checking account',title_ph_identity:'e.g. Passport',title_ph_note:'e.g. Google backup codes',
+new_item:'New item',edit_item:'Edit',need_title:'Give the item a name',saved:'Saved',save_fail:'Save failed: {e}',
+del_confirm:'Move "{n}" to the trash?',del_forever_c:'Delete forever? This cannot be undone.',
+open_site:'Open website',created_at:'Created {d}',updated_at:'Updated {d}',fav_on:'Added to favorites',fav_off:'Removed from favorites',
+reused_n:'Used in {n} items',old_pw:'Not changed for over a year',
+check_breach:'Check for leaks',breach_t:'Leak check',
+breach_consent:'The check sends Have I Been Pwned only 5 characters of an encrypted "fingerprint" (hash) of the password — never the password itself or any other detail. Continue?',
+breach_found:'Found {n} times in known leaks — change it',breach_clean:'Not found in known leaks',breach_err:'The check failed. Are you online?',checking:'Checking…',
+exp_soon:'Expires in {d} days',exp_past:'Expired',
+gen_length:'Length: {n}',gen_lower:'Lowercase (a-z)',gen_upper:'Uppercase (A-Z)',gen_digits:'Digits (0-9)',gen_symbols:'Symbols (!@#)',
+gen_ambig:'No look-alikes (O/0, l/1)',gen_new:'Generate',bits:'Estimated strength: {b} bits',
+h_score:'Vault score',h_weak:'Weak passwords',h_reused:'Reused passwords',h_old:'Not changed for over a year',h_expiring:'Cards and documents expired or expiring soon',
+h_breached:'Passwords found in leaks',h_all_good:'No problems here',h_checkall:'Check all passwords for leaks',h_checking:'Checking {i} of {n}…',
+h_none:'No passwords to check yet.',h_note:'Strength is an estimate based on length and character variety — not a guarantee.',
+files_add:'Add files',files_camera:'Take photo',file_cat:'Category',file_name:'File name',
+fc_all:'All',fc_id:'IDs',fc_money:'Money',fc_home:'Home',fc_car:'Car',fc_health:'Health',fc_other:'Other',
+files_empty:'No files yet. Add photos, PDFs or any other file — they are encrypted before saving.',
+encrypting:'Encrypting {i} of {n}…',file_big:'"{n}" is larger than 100MB and was not added',files_added:'{n} files added, encrypted',
+orig_note:'The original file is still in your gallery or the folder you picked it from. If you want it only in the vault, delete it there yourself. (Photos taken from inside the vault are not saved to the gallery.)',
+file_share:'Share',file_download:'Download',file_open:'Open',download_warn:'A downloaded or shared file leaves the vault unencrypted.',file_fail:'Could not open the file',
+s_user:'User name',s_user_ph:'Name or nickname (shown on backups)',s_lang:'Language',s_look:'Appearance',s_theme:'Color theme',s_mode:'Display mode',mode_night:'🌙 Night',mode_day:'☀️ Day',
+th_gold:'Black & gold',th_silver:'Black & silver',th_copper:'Night & copper',th_jade:'Jade',th_ruby:'Burgundy',
+s_security:'Security',s_autolock:'Auto-lock when leaving the app',al_0:'Immediately',al_1:'After 1 minute',al_5:'After 5 minutes',al_15:'After 15 minutes',
+idle_note:'The vault also locks after 10 minutes without use.',
+s_clip:'Clear clipboard after copying',clip_off:'Off',clip_s:'{n} seconds',clip_note:'Clearing works while the app is on screen; otherwise it happens when you return to it.',
+s_quick:'Quick unlock',q_none:'Not set',q_is_pin:'On: 6-digit PIN',q_is_pattern:'On: screen pattern',q_set_pin:'Set PIN',q_set_pattern:'Set pattern',q_remove:'Turn off',
+q_note:'PIN and pattern are for convenience, not the main protection. After 5 wrong tries they are turned off and the master password is required.',
+q_removed:'Quick unlock turned off',s_bio:'Fingerprint',bio_set:'Turn on fingerprint',bio_on:'On',bio_off:'Off',bio_remove:'Turn off',
+bio_unsupported:'This device or browser does not support secure fingerprint unlock for the vault. An up-to-date Chrome on Android is needed.',
+bio_note:'You will be asked for your fingerprint twice — once to create, once to verify. Your fingerprint never leaves the phone.',
+bio_ok:'Fingerprint unlock is on',bio_fail:'Fingerprint was cancelled or failed',bio_removed:'Fingerprint unlock turned off',
+s_change_pw:'Change master password',cur_pw:'Current password',pw_changed:'Master password updated',
+s_new_rec:'Create a new recovery code',new_rec_c:'A new recovery code will be created and the old one will stop working. Continue?',
+s_backup:'Backup & transfer',b_export:'Create encrypted backup',b_import:'Restore from backup',b_last:'Last backup: {d}',b_never:'No backup yet',
+b_hint:'The backup is encrypted and opens only with the master password (or recovery code) that was set when it was made. On a phone you can save it straight to Google Drive with "Share".',
+b_ready:'Backup ready',b_share:'Share (Drive, email…)',b_save:'Save file',b_made:'Backup saved',
+b_pw_prompt:'Backup master password',b_pw_text:'Enter the master password that was set when this backup was made.',
+b_replace:'Restoring replaces everything in the vault with the backup contents. Continue?',b_restored:'Vault restored from backup',b_bad:'This file is not a valid VaultNest backup',
+b_restoring:'Restoring…',b_quick_note:'After restoring, set up quick unlock and fingerprint again.',
+csv_import:'Import passwords from a CSV file',csv_note:'Works with exports from Chrome / Google Password Manager, Bitwarden and Firefox.',
+csv_done:'Imported {n} passwords ({s} duplicates skipped)',csv_delete_hint:'Now delete the CSV file from your device — it is not encrypted.',csv_none:'No passwords found in the file',
+csv_export:'Export passwords to CSV (unencrypted)',csv_export_t:'Unencrypted export',
+csv_export_warn:'The file will contain every password in plain text, readable by anyone who sees it. Use this only to move to another password manager, and delete the file right after. Type "{w}" to continue.',
+export_word:'EXPORT',csv_exported:'{n} passwords exported',
+s_storage:'Storage',st_persist_ok:'The browser granted persistent storage — it will not delete the vault on its own when space runs low.',
+st_persist_no:'The browser did not grant persistent storage. It may delete data when space runs low — back up often.',st_used:'Browser storage in use: {u}',
+shared_origin:'Note: the vault currently runs on a shared address ({h}) with other apps. Clearing site data for any of them also deletes the vault. Move it to its own address, and until then — back up.',
+s_help:'Help',s_guide:'Guide',s_privacy:'Privacy policy',
+s_danger:'Delete',reset_all:'Delete the whole vault from this device',reset_c1:'All passwords, files and settings will be deleted from this device. This cannot be undone. Continue?',
+reset_c2:'Type "{w}" to confirm',reset_word:'DELETE',reset_done:'Vault deleted',
+ab_version:'Version',ab_dev:'Developer',ab_platform:'Platform',ab_storage:'Storage',ab_storage_v:'Encrypted, on this device only',ab_license:'License',
+ab_store:'AppNest store',ab_share:'Share the app',ab_feedback:'Send feedback',ab_security:'How it is secured',
+sec_text:'Each vault gets a random 256-bit key that encrypts every item and file (AES-256-GCM). That key is locked with your master password (PBKDF2-SHA256, 600,000 rounds) and separately with the recovery code. The master password is never stored. Fingerprint unlock uses the phone passkey system (WebAuthn PRF). No server, no account, no third-party code.',
+ab_disclaimer:'VaultNest encrypts your data on your device, but security also depends on your master password, your backups and the device itself. Anyone with your unlocked phone and password can open it. If you lose both the master password and the recovery code, the data cannot be recovered. Use at your own responsibility.',
+ab_diag:'Diagnostic report',ab_diag_note:'The report contains no vault content.',
+pin_enter:'Enter PIN',pin_new:'Choose a 6-digit PIN',pin_again:'Enter the PIN again',pin_mismatch:"PINs don't match",
+pat_enter:'Draw your pattern',pat_draw:'Draw a pattern — at least 4 dots',pat_again:'Draw it again to confirm',pat_short:'At least 4 dots are needed',pat_mismatch:"Patterns don't match",
+quick_set_ok:'Quick unlock is set',quick_wrong:'Wrong. {n} tries left',
+quick_wiped:'Too many wrong tries. Quick unlock was turned off — unlock with the master password.',
+locked:'Vault locked',
+fatal_crypto:'This browser does not support the encryption the vault needs. Open it over https in an up-to-date Chrome.',
+fatal_storage:'The browser blocks local storage (maybe private browsing). The vault cannot save data here.',
+fatal_file:'The app was opened from a local file. Open it from its web address so encryption and saving work.',
+err_generic:'Something went wrong: {e}'
+}};
+let CUR='he';
+function T(k,v){const L=LANG[CUR]||LANG.en;let s=L[k]!=null?L[k]:(LANG.en[k]!=null?LANG.en[k]:k);if(v)s=s.replace(/\{(\w+)\}/g,(m,n)=>v[n]!=null?v[n]:m);return s;}
+/* ================= constants ================= */
+const APP_VERSION='1.0.0';
+const DB_NAME='appnest_vault';
+const LSP='vaultnest_';
+const KDF_ITER=600000, QUICK_ITER=310000, REC_ITER=150000;
+const STORE_URL='https://appnest-store.pages.dev';
+const FEEDBACK='appnest55@gmail.com';
+const SHARED_HOST='barakaflalo.github.io';
+
+/* ================= error log (no vault content) ================= */
+function logErr(m,src,line){try{const a=JSON.parse(localStorage.getItem(LSP+'errlog')||'[]');a.unshift({m:String(m).slice(0,180),s:String(src||'').split('/').pop(),l:line||0,t:Date.now()});localStorage.setItem(LSP+'errlog',JSON.stringify(a.slice(0,10)));}catch(e){}}
+window.addEventListener('error',e=>logErr(e.message,e.filename,e.lineno));
+window.addEventListener('unhandledrejection',e=>logErr(e.reason&&(e.reason.message||e.reason)));
+
+/* ================= small utils ================= */
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const te=new TextEncoder(), td=new TextDecoder();
+const rand=n=>crypto.getRandomValues(new Uint8Array(n));
+function b64(buf){const u=buf instanceof Uint8Array?buf:new Uint8Array(buf);let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s);}
+function unb64(s){const bin=atob(s);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u;}
+const uid=()=>Date.now().toString(36)+Array.from(rand(6),b=>b.toString(16).padStart(2,'0')).join('');
+function randInt(n){const lim=Math.floor(0x100000000/n)*n;const a=new Uint32Array(1);for(;;){crypto.getRandomValues(a);if(a[0]<lim)return a[0]%n;}}
+const ymd=(d=new Date())=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function fmtDate(x){if(!x)return '';const d=typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)?new Date(x+'T00:00'):new Date(x);if(isNaN(d))return String(x);return d.toLocaleDateString(CUR==='he'?'he-IL':'en-GB',{day:'numeric',month:'short',year:'numeric'});}
+function fmtSize(b){if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(0)+' KB';if(b<1073741824)return (b/1048576).toFixed(1)+' MB';return (b/1073741824).toFixed(2)+' GB';}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const norm=s=>String(s||'').normalize('NFKC');
+function hostOf(u){if(!u)return '';try{return new URL(/^[a-z]+:\/\//i.test(u)?u:'https://'+u).hostname.replace(/^www\./,'');}catch(e){return '';}}
+
+/* ================= localStorage shim (prefs only — never secrets) ================= */
+const LS={mem:{},
+get(k,d){try{const v=localStorage.getItem(LSP+k);return v===null?(k in this.mem?this.mem[k]:d):JSON.parse(v);}catch(e){return k in this.mem?this.mem[k]:d;}},
+set(k,v){this.mem[k]=v;try{localStorage.setItem(LSP+k,JSON.stringify(v));}catch(e){}},
+del(k){delete this.mem[k];try{localStorage.removeItem(LSP+k);}catch(e){}},
+clearAll(){this.mem={};try{Object.keys(localStorage).filter(k=>k.startsWith(LSP)).forEach(k=>localStorage.removeItem(k));}catch(e){}}};
+
+/* ================= IndexedDB ================= */
+// stores: meta (vault/quick/bio/devkey), items {id,iv,ct}, files {id,miv,mct,tiv,tct}, blobs {iv,ct}
+const STORES=['meta','items','files','blobs'];
+const DB={db:null,
+open(){if(this.db)return Promise.resolve(this.db);return new Promise((res,rej)=>{let r;try{r=indexedDB.open(DB_NAME,1);}catch(e){rej(e);return;}
+ r.onupgradeneeded=()=>{const d=r.result;STORES.forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s);});};
+ r.onsuccess=()=>{this.db=r.result;this.db.onversionchange=()=>{this.db.close();this.db=null;};res(this.db);};
+ r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});},
+async run(stores,mode,fn){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction(stores,mode);let out;const r=fn(t);if(r&&'onsuccess' in r)r.onsuccess=()=>{out=r.result;};t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error||new Error('abort'));});},
+get(s,k){return this.run(s,'readonly',t=>t.objectStore(s).get(k));},
+put(s,k,v){return this.run(s,'readwrite',t=>{t.objectStore(s).put(v,k);});},
+del(s,k){return this.run(s,'readwrite',t=>{t.objectStore(s).delete(k);});},
+all(s){return this.run(s,'readonly',t=>t.objectStore(s).getAll());},
+count(s){return this.run(s,'readonly',t=>t.objectStore(s).count());},
+async wipe(){if(this.db){this.db.close();this.db=null;}await new Promise(r=>{const q=indexedDB.deleteDatabase(DB_NAME);q.onsuccess=q.onerror=q.onblocked=()=>r();});}};
+
+/* ================= crypto primitives ================= */
+async function kdf(secret,salt,iter){const base=await crypto.subtle.importKey('raw',te.encode(norm(secret)),'PBKDF2',false,['deriveKey']);
+ return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
+async function enc(key,data){const iv=rand(12);const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,data);return {iv,ct};}
+function dec(key,iv,ct){return crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);}
+const importDEK=raw=>crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt']);
+async function encJ(obj){return enc(S.dek,te.encode(JSON.stringify(obj)));}
+async function decJ(iv,ct){return JSON.parse(td.decode(await dec(S.dek,iv,ct)));}
+const REC_ABC='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 symbols → 5 bits each, 24 chars = 120 bits
+function genRecovery(){const b=rand(24);let s='';for(let i=0;i<24;i++){s+=REC_ABC[b[i]&31];if(i%4===3&&i<23)s+='-';}return s;}
+const normRec=c=>String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+
+/* ================= state ================= */
+const S={dek:null,dekRaw:null,items:[],files:[],unlocked:false,stack:[],urls:[],thumbs:{},hold:0};
+
+/* ================= vault / keys ================= */
+async function createVault(pw){
+ const raw=rand(32),salt=rand(16),rsalt=rand(16),code=genRecovery();
+ const w=await enc(await kdf(pw,salt,KDF_ITER),raw);
+ const rw=await enc(await kdf(normRec(code),rsalt,REC_ITER),raw);
+ await DB.put('meta','vault',{v:1,created:Date.now(),kdf:{iter:KDF_ITER,salt},pw:{iv:w.iv,ct:w.ct},rec:{iter:REC_ITER,salt:rsalt,iv:rw.iv,ct:rw.ct}});
+ return {raw,code};}
+async function unwrapPw(pw){const m=await DB.get('meta','vault');const k=await kdf(pw,m.kdf.salt,m.kdf.iter);return new Uint8Array(await dec(k,m.pw.iv,m.pw.ct));}
+async function unwrapRec(code){const m=await DB.get('meta','vault');const k=await kdf(normRec(code),m.rec.salt,m.rec.iter);return new Uint8Array(await dec(k,m.rec.iv,m.rec.ct));}
+async function setMasterPw(raw,pw){const m=await DB.get('meta','vault');const salt=rand(16);const w=await enc(await kdf(pw,salt,KDF_ITER),raw);
+ m.kdf={iter:KDF_ITER,salt};m.pw={iv:w.iv,ct:w.ct};await DB.put('meta','vault',m);}
+async function newRecovery(){const m=await DB.get('meta','vault');const code=genRecovery(),rsalt=rand(16);
+ const rw=await enc(await kdf(normRec(code),rsalt,REC_ITER),S.dekRaw);m.rec={iter:REC_ITER,salt:rsalt,iv:rw.iv,ct:rw.ct};await DB.put('meta','vault',m);return code;}
+// device key: non-extractable, stored in IndexedDB; wraps quick-unlock blob so PIN/pattern alone is useless off-device
+async function devKey(){let k=await DB.get('meta','devkey');if(!k){k=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);await DB.put('meta','devkey',k);}return k;}
+async function setQuick(kind,secret){const salt=rand(16);const inner=await enc(await kdf(kind+':'+secret,salt,QUICK_ITER),S.dekRaw);
+ const packed=new Uint8Array(12+inner.ct.byteLength);packed.set(inner.iv,0);packed.set(new Uint8Array(inner.ct),12);
+ const outer=await enc(await devKey(),packed);await DB.put('meta','quick',{kind,salt,iter:QUICK_ITER,iv:outer.iv,ct:outer.ct,fails:0});}
+async function unlockQuick(secret){const q=await DB.get('meta','quick');if(!q)throw Object.assign(new Error('noquick'),{code:'noquick'});
+ const packed=new Uint8Array(await dec(await devKey(),q.iv,q.ct));const k=await kdf(q.kind+':'+secret,q.salt,q.iter);
+ try{const raw=new Uint8Array(await dec(k,packed.slice(0,12),packed.slice(12)));if(q.fails){q.fails=0;await DB.put('meta','quick',q);}return raw;}
+ catch(e){q.fails=(q.fails||0)+1;if(q.fails>=5){await DB.del('meta','quick');throw Object.assign(new Error('wiped'),{code:'wiped'});}
+  await DB.put('meta','quick',q);throw Object.assign(new Error('wrong'),{code:'wrong',left:5-q.fails});}}
+// fingerprint = WebAuthn passkey + PRF extension → real key material (not just a yes/no gate)
+async function bioAvailable(){try{return !!(window.PublicKeyCredential&&await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());}catch(e){return false;}}
+async function prfKey(out){const base=await crypto.subtle.importKey('raw',out,'HKDF',false,['deriveKey']);
+ return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:te.encode('VaultNest-bio-v1'),info:te.encode('dek-wrap')},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
+async function bioEval(credId,psalt){const a=await navigator.credentials.get({publicKey:{challenge:rand(32),rpId:location.hostname,allowCredentials:[{type:'public-key',id:credId}],userVerification:'required',timeout:60000,extensions:{prf:{eval:{first:psalt}}}}});
+ const r=a.getClientExtensionResults();if(!r.prf||!r.prf.results||!r.prf.results.first)throw Object.assign(new Error('noprf'),{code:'noprf'});return r.prf.results.first;}
+async function setupBio(){const cred=await navigator.credentials.create({publicKey:{rp:{name:'VaultNest',id:location.hostname},user:{id:rand(16),name:'vaultnest',displayName:'VaultNest'},challenge:rand(32),
+ pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],authenticatorSelection:{authenticatorAttachment:'platform',residentKey:'required',requireResidentKey:true,userVerification:'required'},timeout:60000,extensions:{prf:{}}}});
+ const ext=cred.getClientExtensionResults();if(ext.prf&&ext.prf.enabled===false)throw Object.assign(new Error('noprf'),{code:'noprf'});
+ const credId=new Uint8Array(cred.rawId),psalt=rand(32);const w=await enc(await prfKey(await bioEval(credId,psalt)),S.dekRaw);
+ await DB.put('meta','bio',{credId,psalt,iv:w.iv,ct:w.ct});}
+async function unlockBio(){const b=await DB.get('meta','bio');return new Uint8Array(await dec(await prfKey(await bioEval(b.credId,b.psalt)),b.iv,b.ct));}
+
+/* ================= data ================= */
+async function loadAll(){S.items=[];S.files=[];
+ for(const r of await DB.all('items')){try{S.items.push(await decJ(r.iv,r.ct));}catch(e){logErr('item decrypt');}}
+ for(const r of await DB.all('files')){try{const m=await decJ(r.miv,r.mct);m.id=r.id;m.hasThumb=!!r.tct;S.files.push(m);}catch(e){logErr('file decrypt');}}
+ await purgeTrash();}
+async function saveItem(it){it.updated=Date.now();const {iv,ct}=await encJ(it);await DB.put('items',it.id,{id:it.id,iv,ct});
+ const i=S.items.findIndex(x=>x.id===it.id);if(i>=0)S.items[i]=it;else S.items.push(it);}
+async function saveFileMeta(m){const clean={name:m.name,type:m.type,size:m.size,cat:m.cat,created:m.created,deletedAt:m.deletedAt||0};
+ const rec=await DB.get('files',m.id);const e=await encJ(clean);rec.miv=e.iv;rec.mct=e.ct;await DB.put('files',m.id,rec);}
+async function killItem(id){await DB.del('items',id);S.items=S.items.filter(x=>x.id!==id);}
+async function killFile(id){await DB.del('blobs',id);await DB.del('files',id);S.files=S.files.filter(x=>x.id!==id);if(S.thumbs[id]){URL.revokeObjectURL(S.thumbs[id]);delete S.thumbs[id];}}
+async function purgeTrash(){const lim=Date.now()-30*864e5;
+ for(const it of S.items.filter(x=>x.deletedAt&&x.deletedAt<lim))await killItem(it.id);
+ for(const f of S.files.filter(x=>x.deletedAt&&x.deletedAt<lim))await killFile(f.id);}
+const live=()=>S.items.filter(x=>!x.deletedAt);
+const liveFiles=()=>S.files.filter(x=>!x.deletedAt);
+async function makeThumb(file){try{const bmp=await createImageBitmap(file);const sc=Math.min(1,300/Math.max(bmp.width,bmp.height));
+ const c=document.createElement('canvas');c.width=Math.max(1,Math.round(bmp.width*sc));c.height=Math.max(1,Math.round(bmp.height*sc));
+ c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);if(bmp.close)bmp.close();
+ const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.72));return b?await b.arrayBuffer():null;}catch(e){return null;}}
+async function addOneFile(f,cat){const buf=await f.arrayBuffer();const e=await enc(S.dek,buf);
+ const th=/^image\//.test(f.type)?await makeThumb(f):null;const te2=th?await enc(S.dek,th):null;
+ const id=uid();const meta={name:f.name||('photo-'+ymd()+'.jpg'),type:f.type||'application/octet-stream',size:f.size,cat,created:Date.now(),deletedAt:0};
+ const m=await encJ(meta);await DB.put('blobs',id,{iv:e.iv,ct:e.ct});
+ await DB.put('files',id,{id,miv:m.iv,mct:m.ct,tiv:te2?te2.iv:null,tct:te2?te2.ct:null});
+ meta.id=id;meta.hasThumb=!!te2;S.files.push(meta);}
+async function thumbURL(id){if(S.thumbs[id])return S.thumbs[id];const r=await DB.get('files',id);if(!r||!r.tct)return null;
+ const u=URL.createObjectURL(new Blob([await dec(S.dek,r.tiv,r.tct)],{type:'image/jpeg'}));S.thumbs[id]=u;return u;}
+async function fileBlob(m){const r=await DB.get('blobs',m.id);return new Blob([await dec(S.dek,r.iv,r.ct)],{type:m.type});}
+
+/* ================= backup (fully encrypted, portable) ================= */
+async function buildBackup(){const m=await DB.get('meta','vault');const items=await DB.all('items');
+ const fr=await DB.all('files');const files=[];
+ for(const r of fr){const bl=await DB.get('blobs',r.id);if(!bl)continue;
+  files.push({id:r.id,miv:b64(r.miv),mct:b64(r.mct),tiv:r.tiv?b64(r.tiv):null,tct:r.tct?b64(r.tct):null,iv:b64(bl.iv),ct:b64(bl.ct)});}
+ const out={app:'VaultNest',format:1,version:APP_VERSION,created:new Date().toISOString(),user:LS.get('user',''),
+  vault:{kdf:{iter:m.kdf.iter,salt:b64(m.kdf.salt)},pw:{iv:b64(m.pw.iv),ct:b64(m.pw.ct)},rec:{iter:m.rec.iter,salt:b64(m.rec.salt),iv:b64(m.rec.iv),ct:b64(m.rec.ct)}},
+  items:items.map(r=>({id:r.id,iv:b64(r.iv),ct:b64(r.ct)})),files};
+ const who=(LS.get('user','')||'').replace(/[^\p{L}\p{N}_-]+/gu,'-').slice(0,20);
+ return new File([JSON.stringify(out)],`vaultnest-backup-${who?who+'-':''}${ymd()}.json`,{type:'application/json'});}
+function parseBackup(text){let d;try{d=JSON.parse(text);}catch(e){return null;}
+ if(!d||d.app!=='VaultNest'||!d.vault||!d.vault.pw||!Array.isArray(d.items))return null;return d;}
+async function unwrapBackup(d,secret,useRec){const v=useRec?d.vault.rec:d.vault.pw;const kd=useRec?{salt:d.vault.rec.salt,iter:d.vault.rec.iter}:d.vault.kdf;
+ const k=await kdf(useRec?normRec(secret):secret,unb64(kd.salt),kd.iter);return new Uint8Array(await dec(k,unb64(v.iv),unb64(v.ct)));}
+async function restoreBackup(d){const meta={v:1,created:Date.now(),kdf:{iter:d.vault.kdf.iter,salt:unb64(d.vault.kdf.salt)},pw:{iv:unb64(d.vault.pw.iv),ct:unb64(d.vault.pw.ct)},
+  rec:{iter:d.vault.rec.iter,salt:unb64(d.vault.rec.salt),iv:unb64(d.vault.rec.iv),ct:unb64(d.vault.rec.ct)}};
+ await DB.run(STORES,'readwrite',t=>{const M=t.objectStore('meta'),I=t.objectStore('items'),F=t.objectStore('files'),B=t.objectStore('blobs');
+  M.put(meta,'vault');M.delete('quick');M.delete('bio');I.clear();F.clear();B.clear();
+  d.items.forEach(r=>I.put({id:r.id,iv:unb64(r.iv),ct:unb64(r.ct)},r.id));
+  (d.files||[]).forEach(r=>{F.put({id:r.id,miv:unb64(r.miv),mct:unb64(r.mct),tiv:r.tiv?unb64(r.tiv):null,tct:r.tct?unb64(r.tct):null},r.id);B.put({iv:unb64(r.iv),ct:unb64(r.ct)},r.id);});});}
+
+/* ================= CSV import / export ================= */
+function parseCSV(text){text=text.replace(/^\uFEFF/,'');const rows=[];let row=[],f='',q=false;
+ for(let i=0;i<text.length;i++){const c=text[i];
+  if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i++;}else q=false;}else f+=c;}
+  else if(c==='"')q=true;else if(c===','){row.push(f);f='';}else if(c==='\n'){row.push(f);rows.push(row);row=[];f='';}else if(c!=='\r')f+=c;}
+ if(f!==''||row.length){row.push(f);rows.push(row);}return rows.filter(r=>r.some(x=>x.trim()!==''));}
+function csvToLogins(text){const rows=parseCSV(text);if(rows.length<2)return [];const h=rows[0].map(x=>x.trim().toLowerCase());
+ const col=(...names)=>{for(const n of names){const i=h.indexOf(n);if(i>=0)return i;}return -1;};
+ const cT=col('name','title'),cU=col('url','login_uri','uri','website'),cN=col('username','login_username','login','email'),cP=col('password','login_password'),cX=col('note','notes','extra','comments');
+ if(cP<0&&cN<0)return [];const out=[];
+ for(const r of rows.slice(1)){const g=i=>i>=0&&r[i]!=null?r[i].trim():'';const pw=g(cP),un=g(cN),url=g(cU);if(!pw&&!un)continue;
+  out.push({title:g(cT)||hostOf(url)||un||'—',url,username:un,password:pw,notes:g(cX)});}
+ return out;}
+async function importLogins(list){let n=0,s=0;const key=(u,n2,p)=>[hostOf(u),n2,p].join('\u0001');
+ const have=new Set(live().filter(x=>x.type==='login').map(x=>key(x.f.url,x.f.username,x.f.password)));
+ for(const l of list){const k=key(l.url,l.username,l.password);if(have.has(k)){s++;continue;}have.add(k);
+  await saveItem({id:uid(),type:'login',title:l.title,fav:false,created:Date.now(),pwChanged:Date.now(),f:{username:l.username,password:l.password,url:l.url,notes:l.notes}});n++;}
+ return {n,s};}
+function loginsCSV(){const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';const L=live().filter(x=>x.type==='login');
+ return {n:L.length,text:'name,url,username,password,note\n'+L.map(x=>[x.title,x.f.url,x.f.username,x.f.password,x.f.notes].map(q).join(',')).join('\n')};}
+
+/* ================= passwords: generator, strength, leaks ================= */
+function genPw(o){let L='abcdefghijklmnopqrstuvwxyz',U='ABCDEFGHIJKLMNOPQRSTUVWXYZ',D='0123456789',Y='!@#$%^&*()-_=+[]{};:,.?/~';
+ if(o.ambig){L=L.replace(/[lo]/g,'');U=U.replace(/[IO]/g,'');D=D.replace(/[01]/g,'');}
+ const sets=[];if(o.lower)sets.push(L);if(o.upper)sets.push(U);if(o.digits)sets.push(D);if(o.symbols)sets.push(Y);if(!sets.length)sets.push(L);
+ const all=sets.join('');const out=sets.map(s=>s[randInt(s.length)]);while(out.length<o.len)out.push(all[randInt(all.length)]);
+ for(let i=out.length-1;i>0;i--){const j=randInt(i+1);[out[i],out[j]]=[out[j],out[i]];}return out.slice(0,o.len).join('');}
+const genOpts=()=>Object.assign({len:20,lower:true,upper:true,digits:true,symbols:true,ambig:false},LS.get('genopt',{}));
+const COMMON=['password','passw0rd','123456','12345','qwerty','abc123','111111','iloveyou','admin','welcome','monkey','dragon','letmein','football','000000','1q2w3e','zxcvbn','asdfgh','superman','sunshine','princess','shalom','israel','qazwsx','654321','123123','master','login'];
+function strength(pw){if(!pw)return {s:0,bits:0};let pool=0;
+ if(/[a-z]/.test(pw))pool+=26;if(/[A-Z]/.test(pw))pool+=26;if(/[0-9]/.test(pw))pool+=10;if(/[^a-zA-Z0-9\u0590-\u05FF]/.test(pw))pool+=33;if(/[\u0590-\u05FF]/.test(pw))pool+=27;
+ let bits=[...pw].length*Math.log2(Math.max(pool,2));const low=pw.toLowerCase();
+ const hit=COMMON.filter(c=>low.includes(c)).reduce((a,c)=>Math.max(a,c.length),0);if(hit)bits*=Math.max(.25,1-hit/pw.length);
+ if(/(.)\1{2,}/.test(pw))bits*=.8;if(/(0123|1234|2345|3456|4567|5678|6789|abcd|bcde|qwer|asdf)/i.test(pw))bits*=.8;
+ if(new Set(pw).size<pw.length/2)bits*=.75;bits=Math.round(bits);
+ return {bits,s:bits<28?0:bits<40?1:bits<60?2:bits<80?3:4};}
+const STR_COL=['var(--bad)','var(--bad)','var(--warn)','var(--ok)','var(--ok)'];
+async function pwnedCount(pw){const h=await crypto.subtle.digest('SHA-1',te.encode(pw));
+ const hex=Array.from(new Uint8Array(h),b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
+ const r=await fetch('https://api.pwnedpasswords.com/range/'+hex.slice(0,5),{referrerPolicy:'no-referrer',cache:'no-store',credentials:'omit'});
+ if(!r.ok)throw new Error('http '+r.status);const suf=hex.slice(5);
+ for(const line of (await r.text()).split('\n')){const [s,c]=line.trim().split(':');if(s===suf)return parseInt(c,10)||0;}return 0;}
+async function hibpConsent(){if(LS.get('hibpOk',false))return true;const ok=await confirmDlg(T('breach_consent'),{title:T('breach_t')});if(ok)LS.set('hibpOk',true);return ok;}
+
+/* ================= clipboard ================= */
+let clipT=0,clipPending=false;
+async function clipClear(){try{await navigator.clipboard.writeText('');clipPending=false;}catch(e){clipPending=true;}}
+async function copyText(v){try{await navigator.clipboard.writeText(v);}catch(e){const ta=document.createElement('textarea');ta.value=v;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e2){}ta.remove();}
+ toast(T('copied'));const s=LS.get('clip',30);clearTimeout(clipT);clipPending=false;
+ if(s>0)clipT=setTimeout(()=>{if(document.hasFocus())clipClear();else clipPending=true;},s*1000);}
+
+/* ================= storage persistence ================= */
+async function persistStorage(){try{if(navigator.storage&&navigator.storage.persist){if(!(await navigator.storage.persisted()))await navigator.storage.persist();}}catch(e){}}
+/* ================= UI primitives ================= */
+function toast(msg,kind){const t=document.createElement('div');t.className='toast '+(kind||'');t.textContent=msg;$('#toasts').appendChild(t);
+ const life=Math.min(6000,2400+msg.length*35);setTimeout(()=>t.classList.add('out'),life);setTimeout(()=>t.remove(),life+400);}
+function modal(html,o={}){return new Promise(res=>{const w=document.createElement('div');w.className='mwrap';
+ w.innerHTML=`<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;$('#modals').appendChild(w);const prev=document.activeElement;let done=false;
+ const close=v=>{if(done)return;done=true;w.classList.add('out');document.removeEventListener('keydown',onKey);setTimeout(()=>w.remove(),180);if(o.onClose)o.onClose();try{prev&&prev.focus&&prev.focus();}catch(e){}res(v===undefined?null:v);};
+ const onKey=e=>{if(e.key==='Escape'&&w===$('#modals').lastElementChild)close(null);
+  if(e.key==='Tab'){const f=$$('button,input,select,textarea,a[href],video,audio',w).filter(x=>!x.disabled&&x.offsetParent!==null);if(!f.length)return;
+   if(e.shiftKey&&document.activeElement===f[0]){e.preventDefault();f[f.length-1].focus();}else if(!e.shiftKey&&document.activeElement===f[f.length-1]){e.preventDefault();f[0].focus();}}};
+ document.addEventListener('keydown',onKey);w.addEventListener('click',e=>{if(e.target===w&&!o.sticky)close(null);});w._close=close;
+ const sh=w.firstElementChild;bindEyes(sh);if(o.onOpen)o.onOpen(sh,close);
+ const af=sh.querySelector('[autofocus]')||sh.querySelector('button');if(af)setTimeout(()=>{try{af.focus({preventScroll:true});}catch(e){}},60);});}
+function confirmDlg(text,o={}){return modal(`${o.title?`<h3 class="mh">${esc(o.title)}</h3>`:''}<p class="mtext">${esc(text)}</p><div class="mact"><button class="btn" data-v="0">${esc(o.no||T('cancel'))}</button><button class="btn pri ${o.danger?'danger':''}" data-v="1">${esc(o.ok||T('confirm'))}</button></div>`,
+ {onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v==='1'))});}
+function promptDlg(title,o={}){const isPw=o.type==='password';
+ return modal(`<h3 class="mh">${esc(title)}</h3>${o.text?`<p class="mtext">${esc(o.text)}</p>`:''}
+ <div class="${isPw?'pwbox':''}"><input class="inp ${o.mono?'mono':''}" id="pd" type="${o.type||'text'}" autocomplete="off" autocapitalize="off" spellcheck="false" autofocus placeholder="${esc(o.ph||'')}" value="${esc(o.value||'')}" ${o.ltr||isPw?'dir="ltr"':''}>${isPw?`<button type="button" class="eye" data-eye="pd" aria-label="${T('show')}">👁</button>`:''}</div>
+ <div class="mact"><button class="btn" data-v="0">${T('cancel')}</button><button class="btn pri ${o.danger?'danger':''}" data-v="1">${esc(o.ok||T('confirm'))}</button></div>`,
+ {onOpen:(s,close)=>{const i=$('#pd',s);const ok=()=>close(i.value);$('[data-v="1"]',s).onclick=ok;$('[data-v="0"]',s).onclick=()=>close(null);i.onkeydown=e=>{if(e.key==='Enter')ok();};}});}
+function bindEyes(root){$$('[data-eye]',root).forEach(b=>{b.onclick=()=>{const i=document.getElementById(b.dataset.eye);if(!i)return;const sh=i.type==='password';i.type=sh?'text':'password';b.textContent=sh?'🙈':'👁';b.setAttribute('aria-label',sh?T('hide'):T('show'));};});}
+function bindMeter(input,bar,lbl){const up=()=>{const r=strength(input.value);bar.style.width=(input.value?(r.s+1)*20:0)+'%';bar.style.background=STR_COL[r.s];lbl.textContent=input.value?T('str_'+r.s)+' · '+T('bits',{b:r.bits}):'';};input.addEventListener('input',up);up();}
+function longPress(el,fn){let t=0,fired=false,x=0,y=0;
+ el.addEventListener('pointerdown',e=>{fired=false;x=e.clientX;y=e.clientY;t=setTimeout(()=>{fired=true;if(navigator.vibrate)navigator.vibrate(15);fn();},550);});
+ const cancel=()=>clearTimeout(t);el.addEventListener('pointerup',cancel);el.addEventListener('pointercancel',cancel);el.addEventListener('pointerleave',cancel);
+ el.addEventListener('pointermove',e=>{if(Math.abs(e.clientX-x)>10||Math.abs(e.clientY-y)>10)cancel();});
+ el.addEventListener('contextmenu',e=>e.preventDefault());
+ el.addEventListener('click',e=>{if(fired){e.stopImmediatePropagation();e.preventDefault();fired=false;}},true);}
+// While a system sheet is open (file picker, camera, share, fingerprint) the page goes "hidden" — don't auto-lock for that.
+async function hold(fn){S.hold++;try{return await fn();}finally{setTimeout(()=>{S.hold=Math.max(0,S.hold-1);},1500);}}
+function pickFile(inp){return hold(()=>new Promise(res=>{inp.value='';let got=false;
+ inp.onchange=()=>{got=true;res(Array.from(inp.files||[]));};inp.oncancel=()=>{got=true;res([]);};
+ const onFocus=()=>{setTimeout(()=>{if(!got)res([]);},1200);window.removeEventListener('focus',onFocus);};window.addEventListener('focus',onFocus);inp.click();}));}
+async function shareOrSave(file){if(navigator.canShare&&navigator.canShare({files:[file]})){try{await hold(()=>navigator.share({files:[file],title:file.name}));return 'shared';}catch(e){if(e.name==='AbortError')return null;}}
+ saveFile(file);return 'saved';}
+function saveFile(file){const u=URL.createObjectURL(file);const a=document.createElement('a');a.href=u;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);}
+
+/* ================= PIN pad & pattern ================= */
+function pinPad(title,sub){let v='';
+ return modal(`<h3 class="mh" style="text-align:center">${esc(title)}</h3><p class="mtext" id="pmsg" style="text-align:center;min-height:1.6em">${esc(sub||'')}</p>
+ <div class="pdots">${'<i></i>'.repeat(6)}</div><div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-n="${n}">${n}</button>`).join('')}<button data-a="x" aria-label="${T('cancel')}">✕</button><button data-n="0">0</button><button data-a="del" aria-label="${T('delete')}">⌫</button></div>`,
+ {sticky:true,onOpen:(s,close)=>{const dots=$$('.pdots i',s);const draw=()=>dots.forEach((d,i)=>d.classList.toggle('on',i<v.length));
+  const press=n=>{if(v.length<6){v+=n;draw();if(v.length===6)setTimeout(()=>close(v),120);}};
+  $$('[data-n]',s).forEach(b=>b.onclick=()=>press(b.dataset.n));$('[data-a=del]',s).onclick=()=>{v=v.slice(0,-1);draw();};$('[data-a=x]',s).onclick=()=>close(null);
+  s.addEventListener('keydown',e=>{if(/^\d$/.test(e.key))press(e.key);else if(e.key==='Backspace'){v=v.slice(0,-1);draw();}});}});}
+function patternPad(title,sub){const P=[50,150,250];let dots='';for(let i=0;i<9;i++){const x=P[i%3],y=P[(i/3)|0];dots+=`<circle class="pr" cx="${x}" cy="${y}" r="30"/><circle class="pd" data-i="${i}" cx="${x}" cy="${y}" r="10"/>`;}
+ return modal(`<h3 class="mh" style="text-align:center">${esc(title)}</h3><p class="mtext" id="pmsg" style="text-align:center;min-height:1.6em">${esc(sub||'')}</p>
+ <svg class="pat" viewBox="0 0 300 300" role="img" aria-label="${esc(title)}"><polyline points=""/>${dots}</svg><div class="mact"><button class="btn" data-a="x">${T('cancel')}</button></div>`,
+ {sticky:true,onOpen:(s,close)=>{const svg=$('svg',s),pl=$('polyline',s),msg=$('#pmsg',s);let seq=[],down=false,cur=null;
+  const pt=e=>{const r=svg.getBoundingClientRect();return {x:(e.clientX-r.left)*300/r.width,y:(e.clientY-r.top)*300/r.height};};
+  const redraw=()=>{pl.setAttribute('points',seq.map(i=>P[i%3]+','+P[(i/3)|0]).concat(cur?[cur.x+','+cur.y]:[]).join(' '));$$('.pd',s).forEach(c=>c.classList.toggle('on',seq.includes(+c.dataset.i)));};
+  const add=i=>{if(seq.includes(i))return;const last=seq[seq.length-1];
+   if(last!=null){const ra=(last/3)|0,ca=last%3,rb=(i/3)|0,cb=i%3;if((ra+rb)%2===0&&(ca+cb)%2===0){const mid=((ra+rb)/2)*3+(ca+cb)/2;if(!seq.includes(mid))seq.push(mid);}}
+   seq.push(i);if(navigator.vibrate)navigator.vibrate(8);};
+  const hit=p=>{for(let i=0;i<9;i++){const dx=p.x-P[i%3],dy=p.y-P[(i/3)|0];if(dx*dx+dy*dy<34*34)return i;}return -1;};
+  svg.addEventListener('pointerdown',e=>{down=true;seq=[];try{svg.setPointerCapture(e.pointerId);}catch(x){}const p=pt(e),h=hit(p);if(h>=0)add(h);cur=p;redraw();});
+  svg.addEventListener('pointermove',e=>{if(!down)return;const p=pt(e),h=hit(p);if(h>=0)add(h);cur=p;redraw();});
+  const up=()=>{if(!down)return;down=false;cur=null;redraw();
+   if(seq.length<4){msg.textContent=T('pat_short');setTimeout(()=>{seq=[];redraw();},500);return;}const out=seq.join('');setTimeout(()=>close(out),150);};
+  svg.addEventListener('pointerup',up);svg.addEventListener('pointercancel',up);$('[data-a=x]',s).onclick=()=>close(null);}});}
+async function askNewSecret(kind){const pad=kind==='pin'?pinPad:patternPad;
+ const a=await pad(kind==='pin'?T('pin_new'):T('pat_draw'));if(!a)return null;
+ const b=await pad(kind==='pin'?T('pin_again'):T('pat_again'));if(!b)return null;
+ if(a!==b){toast(kind==='pin'?T('pin_mismatch'):T('pat_mismatch'),'bad');return null;}return a;}
+
+/* ================= lock screen ================= */
+function dialSVG(){let t='';for(let i=0;i<60;i++){const a=i*Math.PI/30,r1=i%5?91:84;
+ t+=`<line x1="${(110+r1*Math.sin(a)).toFixed(1)}" y1="${(110-r1*Math.cos(a)).toFixed(1)}" x2="${(110+98*Math.sin(a)).toFixed(1)}" y2="${(110-98*Math.cos(a)).toFixed(1)}"/>`;}
+ return `<svg class="dial" viewBox="0 0 220 220" aria-hidden="true"><circle class="d-o" cx="110" cy="110" r="106"/><g class="d-t">${t}</g><g class="d-w"><circle class="d-i" cx="110" cy="110" r="74"/><g class="d-s"><line x1="110" y1="42" x2="110" y2="178"/><line x1="51.1" y1="76" x2="168.9" y2="144"/><line x1="51.1" y1="144" x2="168.9" y2="76"/></g><circle class="d-h" cx="110" cy="110" r="27"/><path class="d-k" d="M110 97a7 7 0 0 1 3.5 13.1V123h-7v-12.9A7 7 0 0 1 110 97z"/></g></svg>`;}
+function lockShell(inner,withLang){const L=$('#lock');L.hidden=false;L.classList.remove('gone');$('#view').setAttribute('aria-hidden','true');
+ L.innerHTML=`<div class="lockin">${withLang?`<div class="langbar"><div class="seg">${LANGS.map(l=>`<button data-lang="${l.c}" aria-pressed="${l.c===CUR}">${l.n}</button>`).join('')}</div></div>`:''}
+ <div class="dialwrap">${dialSVG()}</div><div class="brand"><h1>VaultNest</h1><p>${T('app_sub')}</p></div><div class="lockbody">${inner}</div></div>`;
+ bindEyes(L);$$('[data-lang]',L).forEach(b=>b.onclick=()=>{setLang(b.dataset.lang);L._redraw&&L._redraw();});}
+function shakeDial(){const d=$('#lock .dial');if(!d)return;d.classList.remove('shake');void d.offsetWidth;d.classList.add('shake');}
+function fatal(msg){lockShell(`<div class="card"><p>${esc(msg)}</p></div>`,true);}
+function showOnboard(){const L=$('#lock');L._redraw=showOnboard;lockShell('<div id="obh"></div>',true);obSlides($('#obh'),()=>{LS.set('onboarded',1);showCreate();},true);}
+function obSlides(host,onDone,first){let i=0;const N=5;const draw=()=>{host.innerHTML=`<div class="ob"><h2>${T('ob'+(i+1)+'_t')}</h2><p>${T('ob'+(i+1)+'_d')}</p>
+ <div class="dots">${Array.from({length:N},(_,j)=>`<i class="${j===i?'on':''}"></i>`).join('')}</div>
+ <div class="mact"><button class="btn" data-a="skip">${T('skip')}</button><button class="btn pri" data-a="next">${i<N-1?T('next'):(first?T('ob_start'):T('done'))}</button></div></div>`;
+ $('[data-a=skip]',host).onclick=onDone;$('[data-a=next]',host).onclick=()=>{if(i<N-1){i++;draw();}else onDone();};};draw();}
+function pwFields(id){return `<label class="lbl" for="${id}1">${T('new_pw')}</label><div class="pwbox"><input id="${id}1" class="inp" type="password" autocomplete="new-password" dir="ltr" spellcheck="false"><button type="button" class="eye" data-eye="${id}1" aria-label="${T('show')}">👁</button></div>
+ <div class="meter"><i id="${id}m"></i></div><div class="mlbl" id="${id}ml"></div>
+ <label class="lbl" for="${id}2">${T('pw_confirm')}</label><div class="pwbox"><input id="${id}2" class="inp" type="password" autocomplete="new-password" dir="ltr" spellcheck="false"><button type="button" class="eye" data-eye="${id}2" aria-label="${T('show')}">👁</button></div>`;}
+async function readPwFields(root,id,errEl){const a=$('#'+id+'1',root).value,b=$('#'+id+'2',root).value;errEl.textContent='';
+ if([...norm(a)].length<10){errEl.textContent=T('pw_short');return null;}if(a!==b){errEl.textContent=T('pw_mismatch');return null;}
+ if(strength(a).s<2&&!(await confirmDlg(T('pw_weak_warn'),{danger:true,ok:T('continue')})))return null;return a;}
+function showCreate(){const L=$('#lock');L._redraw=showCreate;
+ lockShell(`<div class="stack"><h2 class="ctitle">${T('create_t')}</h2><p class="mlbl" style="text-align:center">${T('create_d')}</p>${pwFields('cp')}
+ <div class="err" id="cerr"></div><button class="btn pri big" id="cbtn">${T('create_btn')}</button><button class="link" id="crest">${T('restore_existing')}</button></div>`,true);
+ bindMeter($('#cp1'),$('#cpm'),$('#cpml'));
+ $('#cbtn').onclick=async()=>{const pw=await readPwFields(L,'cp',$('#cerr'));if(!pw)return;const b=$('#cbtn');b.disabled=true;b.textContent=T('creating');
+  try{const {raw,code}=await createVault(pw);LS.set('onboarded',1);persistStorage();showRecoveryCode(code,()=>afterUnlock(raw,true));}
+  catch(e){b.disabled=false;b.textContent=T('create_btn');$('#cerr').textContent=T('err_generic',{e:e.message});}};
+ $('#crest').onclick=restoreFlow;}
+function showRecoveryCode(code,cont){lockShell(`<div class="stack"><h2 class="ctitle">${T('rec_t')}</h2><p class="mtext">${T('rec_d')}</p><div class="reccode" id="rcode">${esc(code)}</div>
+ <button class="btn" id="rcopy">⧉ ${T('rec_copy')}</button><label class="chk"><input type="checkbox" id="rchk"> ${T('rec_check')}</label><button class="btn pri big" id="rgo" disabled>${T('continue')}</button></div>`);
+ $('#rcopy').onclick=()=>copyText(code);$('#rchk').onchange=e=>{$('#rgo').disabled=!e.target.checked;};$('#rgo').onclick=cont;}
+async function showUnlock(msg){const L=$('#lock');L._redraw=()=>showUnlock();const quick=await DB.get('meta','quick'),bio=await DB.get('meta','bio');
+ lockShell(`<form id="uf" class="stack" autocomplete="off"><label class="lbl" for="upw">${T('master_pw')}</label>
+ <div class="pwbox"><input id="upw" class="inp" type="password" autocomplete="current-password" dir="ltr" spellcheck="false"><button type="button" class="eye" data-eye="upw" aria-label="${T('show')}">👁</button></div>
+ <div class="err" id="uerr" role="alert">${esc(msg||'')}</div><button class="btn pri big" id="ubtn" type="submit">${T('unlock')}</button></form>
+ <div class="quickrow">${bio?`<button class="btn" id="ubio">👆 ${T('use_bio')}</button>`:''}${quick?`<button class="btn" id="uq">${quick.kind==='pin'?'🔢 '+T('use_pin'):'⠿ '+T('use_pattern')}</button>`:''}</div>
+ <button class="link" id="uforgot">${T('forgot')}</button>`,true);
+ const err=$('#uerr'),btn=$('#ubtn');
+ $('#uf').onsubmit=async e=>{e.preventDefault();const pw=$('#upw').value;if(!pw)return;const until=LS.get('pwuntil',0);
+  if(Date.now()<until){err.textContent=T('wait_s',{s:Math.ceil((until-Date.now())/1000)});return;}
+  btn.disabled=true;btn.textContent=T('unlocking');
+  try{const raw=await unwrapPw(pw);LS.set('pwfails',0);LS.set('pwuntil',0);await afterUnlock(raw);}
+  catch(x){btn.disabled=false;btn.textContent=T('unlock');if(x&&x.name!=='OperationError'){err.textContent=T('err_generic',{e:x.message});logErr(x.message);return;}
+   const n=LS.get('pwfails',0)+1;LS.set('pwfails',n);if(n>=5)LS.set('pwuntil',Date.now()+Math.min(30000*2**(n-5),900000));
+   err.textContent=T('wrong_pw');shakeDial();$('#upw').select();}};
+ if(bio)$('#ubio').onclick=async()=>{try{const raw=await hold(unlockBio);await afterUnlock(raw);}catch(x){err.textContent=x.code==='noprf'?T('bio_unsupported'):T('bio_fail');}};
+ if(quick){$('#uq').onclick=()=>quickUnlockFlow(quick.kind);}
+ $('#uforgot').onclick=showRecover;
+ if(quick&&!bio&&!msg)setTimeout(()=>{if(!S.unlocked&&!$('#modals').children.length)quickUnlockFlow(quick.kind);},250);}
+async function quickUnlockFlow(kind){let sub='';for(;;){const pad=kind==='pin'?pinPad:patternPad;
+ const s=await pad(kind==='pin'?T('pin_enter'):T('pat_enter'),sub);if(s==null)return;
+ try{const raw=await unlockQuick(s);await afterUnlock(raw);return;}
+ catch(x){if(x.code==='wrong'){sub=T('quick_wrong',{n:x.left});shakeDial();continue;}if(x.code==='wiped'){showUnlock(T('quick_wiped'));return;}
+  toast(T('err_generic',{e:x.message}),'bad');return;}}}
+function showRecover(){const L=$('#lock');L._redraw=showRecover;
+ lockShell(`<div class="stack"><label class="lbl" for="rc">${T('rec_enter')}</label><input id="rc" class="inp mono" dir="ltr" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX">
+ <div class="err" id="rerr"></div><button class="btn pri big" id="rbtn">${T('unlock')}</button><button class="link" id="rback">${T('back')}</button></div>`,true);
+ $('#rback').onclick=()=>showUnlock();
+ $('#rbtn').onclick=async()=>{const b=$('#rbtn');b.disabled=true;try{const raw=await unwrapRec($('#rc').value);showNewPw(raw);}catch(e){b.disabled=false;$('#rerr').textContent=T('rec_wrong');shakeDial();}};}
+function showNewPw(raw){const L=$('#lock');L._redraw=null;
+ lockShell(`<div class="stack"><h2 class="ctitle">${T('rec_ok_set_new')}</h2>${pwFields('np')}<div class="err" id="nerr"></div><button class="btn pri big" id="nbtn">${T('save')}</button></div>`);
+ bindMeter($('#np1'),$('#npm'),$('#npml'));
+ $('#nbtn').onclick=async()=>{const pw=await readPwFields(L,'np',$('#nerr'));if(!pw)return;$('#nbtn').disabled=true;
+  await setMasterPw(raw,pw);LS.set('pwfails',0);LS.set('pwuntil',0);toast(T('pw_changed'));await afterUnlock(raw);};}
+async function afterUnlock(raw,fresh){S.dekRaw=raw;S.dek=await importDEK(raw);await loadAll();S.unlocked=true;S.stack=[];
+ const d=$('#lock .dial');if(d)d.classList.add('open');const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ $('#view').removeAttribute('aria-hidden');go('home',{},true);armIdle();persistStorage();
+ setTimeout(()=>{const L=$('#lock');L.classList.add('gone');setTimeout(()=>{if(S.unlocked){L.hidden=true;L.innerHTML='';}},reduce?0:350);},reduce?0:600);
+ if(fresh)setTimeout(offerQuick,reduce?50:900);}
+function lock(silent){if(!S.unlocked)return;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;S.items=[];S.files=[];S.unlocked=false;
+ S.urls.forEach(u=>URL.revokeObjectURL(u));S.urls=[];Object.values(S.thumbs).forEach(u=>URL.revokeObjectURL(u));S.thumbs={};
+ $$('#modals .mwrap').forEach(w=>w._close&&w._close(null));$('#modals').innerHTML='';$('#view').innerHTML='';clearTimeout(idleT);
+ if(clipPending||clipT){clearTimeout(clipT);clipT=0;clipClear();}showUnlock();if(!silent)toast(T('locked'));}
+let idleT=0,hiddenAt=0;
+function armIdle(){clearTimeout(idleT);if(S.unlocked)idleT=setTimeout(()=>{if(!S.hold)lock();else armIdle();},10*60000);}
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{if(S.unlocked)armIdle();},{passive:true}));
+document.addEventListener('visibilitychange',()=>{
+ if(document.hidden){if(S.hold)return;document.body.classList.add('veil');hiddenAt=Date.now();if(S.unlocked&&LS.get('autolock',1)===0)lock(true);}
+ else{document.body.classList.remove('veil');const m=LS.get('autolock',1);if(S.unlocked&&!S.hold&&hiddenAt&&Date.now()-hiddenAt>=m*60000)lock(true);hiddenAt=0;
+  if(clipPending)setTimeout(clipClear,300);}});
+window.addEventListener('focus',()=>{if(clipPending)clipClear();});
+async function offerQuick(){if(!S.unlocked)return;const bioOk=await bioAvailable();
+ const r=await modal(`<h3 class="mh">${T('quick_offer_t')}</h3><p class="mtext">${T('quick_offer_d')}</p><div class="stack">
+ ${bioOk?`<button class="btn big" data-v="bio">👆 ${T('use_bio')}</button>`:''}<button class="btn big" data-v="pin">🔢 ${T('q_set_pin')}</button><button class="btn big" data-v="pattern">⠿ ${T('q_set_pattern')}</button>
+ <button class="link" data-v="0">${T('later')}</button></div>`,{onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v))});
+ if(r==='bio')await doSetupBio();else if(r==='pin'||r==='pattern')await doSetupQuick(r);}
+async function doSetupQuick(kind){const s=await askNewSecret(kind);if(!s)return;await setQuick(kind,s);toast(T('quick_set_ok'));rerender();}
+async function doSetupBio(){try{await hold(setupBio);toast(T('bio_ok'));}catch(e){toast(e.code==='noprf'?T('bio_unsupported'):T('bio_fail'),'bad');logErr('bio '+(e.name||'')+' '+e.message);}rerender();}
+async function restoreFlow(){const [f]=await pickFile($('#fbak'));if(!f)return;const d=parseBackup(await f.text());if(!d){toast(T('b_bad'),'bad');return;}
+ let raw=null;for(;;){const pw=await promptDlg(T('b_pw_prompt'),{type:'password',text:T('b_pw_text')});if(pw==null)return;
+  try{raw=await unwrapBackup(d,pw,false);break;}catch(e){try{raw=await unwrapBackup(d,pw,true);break;}catch(e2){toast(T('wrong_pw'),'bad');}}}
+ const hasVault=!!(await DB.get('meta','vault'));if(hasVault&&!(await confirmDlg(T('b_replace'),{danger:true,ok:T('restore')})))return;
+ toast(T('b_restoring'));if(S.unlocked){if(S.dekRaw)S.dekRaw.fill(0);S.unlocked=false;}
+ await restoreBackup(d);LS.set('onboarded',1);LS.set('lastBackup',Date.now());toast(T('b_restored'));toast(T('b_quick_note'));await afterUnlock(raw);}
+/* ================= item types ================= */
+const TYPES={
+ login:{ic:'🔑',f:[['username','text'],['password','secret',{gen:1,pw:1}],['url','url'],['notes','area']]},
+ card:{ic:'💳',f:[['cardholder','text'],['number','secret',{num:1,card:1}],['expiry','text',{ph:'MM/YY',exp:1}],['cvv','secret',{num:1}],['cardPin','secret',{num:1}],['issuer','text'],['notes','area']]},
+ code:{ic:'🔢',f:[['code','secret'],['notes','area']]},
+ wifi:{ic:'📶',f:[['ssid','text'],['password','secret',{gen:1,pw:1}],['security','select',{opts:['WPA2/WPA3','WPA','WEP','none']}],['notes','area']]},
+ bank:{ic:'🏦',f:[['bankName','text'],['branch','text'],['account','secret'],['username','text'],['password','secret',{gen:1,pw:1}],['url','url'],['notes','area']]},
+ identity:{ic:'🪪',f:[['docType','text'],['fullName','text'],['docNumber','secret'],['issued','date'],['docExpiry','date'],['notes','area']]},
+ note:{ic:'📝',f:[['notes','area',{hidden:1}]]}};
+const TYPE_ORDER=['login','card','code','wifi','bank','identity','note'];
+const FCATS=['id','money','home','car','health','other'];
+const THEMES=[['gold','#000','#C9A24A'],['silver','#000','#C3CAD3'],['copper','#0A1523','#D38C4F'],['jade','#071A12','#63C79C'],['ruby','#19060B','#E3B27C']];
+const grp4=v=>String(v||'').replace(/\s+/g,'').replace(/(.{4})(?=.)/g,'$1 ');
+const ficon=t=>/^image\//.test(t)?'🖼️':/pdf/.test(t)?'📄':/^video\//.test(t)?'🎞️':/^audio\//.test(t)?'🎵':'📎';
+function subtitle(it){const f=it.f||{};switch(it.type){
+ case 'login':return f.username||hostOf(f.url)||'';case 'card':return (f.number?'•••• '+String(f.number).replace(/\s/g,'').slice(-4):'')+(f.expiry?'  '+f.expiry:'');
+ case 'wifi':return f.ssid||'';case 'bank':return [f.bankName,f.branch].filter(Boolean).join(' · ');case 'identity':return [f.docType,f.docExpiry?fmtDate(f.docExpiry):''].filter(Boolean).join(' · ');
+ default:return T('updated_at',{d:fmtDate(it.updated)});}}
+function expInfo(it){let d=null;if(it.type==='card'&&it.f.expiry){const m=/^(\d{1,2})\s*\/\s*(\d{2,4})$/.exec(it.f.expiry.trim());if(m){let y=+m[2];if(y<100)y+=2000;d=new Date(y,+m[1],0,23,59);}}
+ if(it.type==='identity'&&it.f.docExpiry)d=new Date(it.f.docExpiry+'T23:59');if(!d||isNaN(d))return null;
+ const days=Math.ceil((d-Date.now())/864e5);const lim=it.type==='card'?60:120;if(days<0)return {past:true,days};if(days<=lim)return {past:false,days};return null;}
+const pwFieldsOf=it=>(TYPES[it.type]||{f:[]}).f.filter(x=>x[2]&&x[2].pw&&it.f[x[0]]).map(x=>it.f[x[0]]);
+function reuseMap(){const m=new Map();live().forEach(it=>pwFieldsOf(it).forEach(p=>{m.set(p,(m.get(p)||0)+1);}));return m;}
+
+/* ================= navigation ================= */
+const VIEWS={};
+function go(view,params={},reset){if(reset){S.stack=[{view,params}];try{history.replaceState({vn:1},'');}catch(e){}}
+ else{S.stack.push({view,params});try{history.pushState({vn:S.stack.length},'');}catch(e){}}render();window.scrollTo(0,0);}
+function back(){try{history.back();}catch(e){popView();}}
+function popView(){if(S.stack.length>1){S.stack.pop();render();}}
+window.addEventListener('popstate',()=>{const m=$('#modals').lastElementChild;if(m&&m._close){m._close(null);try{history.pushState({vn:S.stack.length},'');}catch(e){}return;}
+ if(S.unlocked&&S.stack.length>1)popView();});
+function render(){if(!S.unlocked)return;const cur=S.stack[S.stack.length-1];if(!cur)return;const V=$('#view');const y=window.scrollY;const keep=cur.keep;cur.keep=false;S.keepY=keep?y:null;
+ V.innerHTML='';(VIEWS[cur.view]||VIEWS.home)(cur.params||{},V);if(keep)window.scrollTo(0,y);}
+function rerender(){const cur=S.stack[S.stack.length-1];if(cur)cur.keep=true;render();}
+function topbar(title,sub,right=''){return `<header class="top"><button class="backb" data-back>${CUR==='he'||CUR==='ar'?'→':'←'} ${T('back')}</button><div class="ttl"><b>${esc(title)}</b>${sub?`<small>${esc(sub)}</small>`:''}</div>${right}</header>`;}
+const foot=()=>`<footer class="foot"><b>AppNest</b> · VaultNest ${APP_VERSION}</footer>`;
+function wire(V){$$('[data-back]',V).forEach(b=>b.onclick=back);$$('[data-go]',V).forEach(b=>b.onclick=()=>go(b.dataset.go,b.dataset.p?JSON.parse(b.dataset.p):{}));}
+
+/* ================= home ================= */
+function backupNag(){const n=live().length+liveFiles().length;if(!n)return '';const lb=LS.get('lastBackup',0);
+ if(!lb)return `<div class="banner"><p>${T('backup_never')}</p><button class="btn sm" data-bk>${T('backup_now')}</button></div>`;
+ const d=Math.floor((Date.now()-lb)/864e5);return d>=14?`<div class="banner"><p>${T('backup_nag',{d})}</p><button class="btn sm" data-bk>${T('backup_now')}</button></div>`:'';}
+function itemRows(list){if(!list.length)return '';return list.map(it=>`<button class="row" data-id="${esc(it.id)}"><span class="ic">${(TYPES[it.type]||TYPES.note).ic}</span><span class="rt"><b>${esc(it.title)}</b><small>${esc(subtitle(it))}</small></span>${it.fav?'<span class="star" aria-hidden="true">★</span>':''}</button>`).join('');}
+function wireRows(root){$$('.row[data-id]',root).forEach(r=>{const it=()=>S.items.find(x=>x.id===r.dataset.id);r.onclick=()=>go('item',{id:r.dataset.id});
+ longPress(r,async()=>{const x=it();if(x&&!x.deletedAt){await editItem(x);rerender();}});});}
+const sortItems=a=>a.sort((x,y)=>(y.fav?1:0)-(x.fav?1:0)||String(x.title).localeCompare(String(y.title),CUR));
+function searchItems(q){q=q.trim().toLowerCase();if(!q)return [];
+ return sortItems(live().filter(it=>[it.title,it.f.username,it.f.url,it.f.ssid,it.f.bankName,it.f.docType,it.f.issuer,it.f.cardholder].some(v=>v&&String(v).toLowerCase().includes(q))));}
+VIEWS.home=(p,V)=>{const L=live();const cnt=t=>L.filter(x=>x.type===t).length;const user=LS.get('user','');
+ V.innerHTML=`<header class="top"><button class="ib" id="hlock" aria-label="${T('lock_now')}" title="${T('lock_now')}">🔒</button><div class="ttl"><b>VaultNest</b><small>${esc(user||T('app_sub'))}</small></div>
+ <button class="ib" id="htheme" aria-label="${T('s_theme')}" title="${T('s_theme')}">🎨</button><button class="ib" data-go="about" aria-label="${T('about')}" title="${T('about')}">ℹ️</button></header>
+ <main class="wrap"><div class="search"><input id="hs" class="inp" type="search" placeholder="${T('search_ph')}" autocomplete="off" aria-label="${T('search_ph')}"></div><div id="hres"></div>
+ <div id="hmain">${backupNag()}<button class="btn pri big wide" id="hadd">＋ ${T('add_item')}</button>
+ <div class="grid">
+  <button class="tile" data-go="list" data-p='{"type":"all"}'><span class="ti">🗝️</span><b>${T('cat_all')}</b><small>${T('items_n',{n:L.length})}</small></button>
+  <button class="tile" data-go="list" data-p='{"type":"fav"}'><span class="ti">★</span><b>${T('cat_fav')}</b><small>${T('items_n',{n:L.filter(x=>x.fav).length})}</small></button>
+  ${TYPE_ORDER.map(t=>`<button class="tile" data-go="list" data-p='{"type":"${t}"}'><span class="ti">${TYPES[t].ic}</span><b>${T('t_'+t)}</b><small>${cnt(t)}</small></button>`).join('')}
+  <button class="tile" data-go="files"><span class="ti">🗂️</span><b>${T('files')}</b><small>${liveFiles().length}</small></button>
+ </div>
+ <div class="tools"><button class="btn" data-go="gen">🎲 ${T('gen_t')}</button><button class="btn" data-go="health">🩺 ${T('health_t')}</button>
+ <button class="btn" data-go="list" data-p='{"type":"trash"}'>🗑️ ${T('trash')}</button><button class="btn" data-go="settings">⚙️ ${T('settings')}</button></div></div>${foot()}</main>`;
+ wire(V);$('#hlock').onclick=()=>lock();$('#htheme').onclick=themeDlg;$('#hadd').onclick=addMenu;const bk=$('[data-bk]',V);if(bk)bk.onclick=backupDlg;
+ const hs=$('#hs');hs.oninput=()=>{const q=hs.value;$('#hmain').classList.toggle('hide',!!q.trim());const r=searchItems(q);
+  $('#hres').innerHTML=q.trim()?(r.length?itemRows(r):`<p class="empty">${T('no_results')}</p>`):'';wireRows($('#hres'));};};
+async function addMenu(){const r=await modal(`<h3 class="mh">${T('add_what')}</h3><div class="stack">${TYPE_ORDER.map(t=>`<button class="row" data-v="${t}"><span class="ic">${TYPES[t].ic}</span><span class="rt"><b>${T('ts_'+t)}</b></span></button>`).join('')}
+ <button class="row" data-v="files"><span class="ic">🗂️</span><span class="rt"><b>${T('add_files')}</b></span></button></div>`,{onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v))});
+ if(!r)return;if(r==='files'){go('files');return;}const saved=await editItem({type:r});if(saved&&saved.id)go('item',{id:saved.id});}
+async function themeDlg(){await modal(`<h3 class="mh">${T('s_look')}</h3><div id="lookbox"></div><div class="mact"><button class="btn pri" data-v>${T('done')}</button></div>`,
+ {onOpen:(s,close)=>{lookControls($('#lookbox',s));$('[data-v]',s).onclick=()=>close();}});rerender();}
+function lookControls(box){const th=LS.get('theme','gold'),md=LS.get('mode','night');
+ box.innerHTML=`<label class="lbl">${T('s_theme')}</label><div class="swatches">${THEMES.map(([k,bg,ac])=>`<button class="sw" data-th="${k}" aria-pressed="${k===th}" aria-label="${T('th_'+k)}" title="${T('th_'+k)}" style="background:${bg}"><i style="background:${ac}"></i></button>`).join('')}</div>
+ <label class="lbl">${T('s_mode')}</label><div class="seg"><button data-md="night" aria-pressed="${md==='night'}">${T('mode_night')}</button><button data-md="day" aria-pressed="${md==='day'}">${T('mode_day')}</button></div>`;
+ $$('[data-th]',box).forEach(b=>b.onclick=()=>{LS.set('theme',b.dataset.th);applyLook();lookControls(box);});
+ $$('[data-md]',box).forEach(b=>b.onclick=()=>{LS.set('mode',b.dataset.md);applyLook();lookControls(box);});}
+
+/* ================= list ================= */
+VIEWS.list=(p,V)=>{const t=p.type;let list,title;
+ if(t==='trash')return trashView(V);
+ if(t==='all'){list=live();title=T('cat_all');}else if(t==='fav'){list=live().filter(x=>x.fav);title=T('cat_fav');}else{list=live().filter(x=>x.type===t);title=T('t_'+t);}
+ sortItems(list);V.innerHTML=`${topbar(title,T('items_n',{n:list.length}),TYPES[t]?`<button class="ib" id="ladd" aria-label="${T('add_item')}">＋</button>`:'')}
+ <main class="wrap">${list.length>6?`<div class="search"><input id="ls" class="inp" type="search" placeholder="${T('search_ph')}" autocomplete="off"></div>`:''}<div id="lrows">${itemRows(list)||`<p class="empty">${T('empty_list')}</p>`}</div></main>`;
+ wire(V);wireRows(V);const la=$('#ladd',V);if(la)la.onclick=async()=>{const s=await editItem({type:t});if(s&&s.id)go('item',{id:s.id});};
+ const ls=$('#ls',V);if(ls)ls.oninput=()=>{const q=ls.value.trim().toLowerCase();$$('#lrows .row',V).forEach(r=>{r.classList.toggle('hide',!!q&&!r.textContent.toLowerCase().includes(q));});};};
+function trashView(V){const its=S.items.filter(x=>x.deletedAt).sort((a,b)=>b.deletedAt-a.deletedAt),fs=S.files.filter(x=>x.deletedAt).sort((a,b)=>b.deletedAt-a.deletedAt);
+ const row=(ic,title,sub,kind,id)=>`<div class="row"><span class="ic">${ic}</span><span class="rt"><b>${esc(title)}</b><small>${esc(sub)}</small></span><span class="ra"><button class="fa" data-rs="${kind}:${esc(id)}" aria-label="${T('restore')}" title="${T('restore')}">↩</button><button class="fa" data-rm="${kind}:${esc(id)}" aria-label="${T('delete_forever')}" title="${T('delete_forever')}">✕</button></span></div>`;
+ V.innerHTML=`${topbar(T('trash'),T('trash_note'))}<main class="wrap">${its.length+fs.length?its.map(x=>row(TYPES[x.type].ic,x.title,fmtDate(x.deletedAt),'i',x.id)).join('')+fs.map(f=>row(ficon(f.type),f.name,fmtDate(f.deletedAt),'f',f.id)).join('')
+  +`<button class="btn danger wide" id="tempty" style="margin-top:12px">${T('empty_trash')}</button>`:`<p class="empty">${T('trash_empty')}</p>`}</main>`;
+ wire(V);
+ $$('[data-rs]',V).forEach(b=>b.onclick=async()=>{const [k,id]=b.dataset.rs.split(':');if(k==='i'){const it=S.items.find(x=>x.id===id);it.deletedAt=0;await saveItem(it);}else{const f=S.files.find(x=>x.id===id);f.deletedAt=0;await saveFileMeta(f);}toast(T('restored'));rerender();});
+ $$('[data-rm]',V).forEach(b=>b.onclick=async()=>{if(!(await confirmDlg(T('del_forever_c'),{danger:true,ok:T('delete_forever')})))return;const [k,id]=b.dataset.rm.split(':');if(k==='i')await killItem(id);else await killFile(id);rerender();});
+ const te_=$('#tempty',V);if(te_)te_.onclick=async()=>{if(!(await confirmDlg(T('empty_trash_c'),{danger:true,ok:T('empty_trash')})))return;for(const x of its)await killItem(x.id);for(const f of fs)await killFile(f.id);rerender();};}
+
+/* ================= item view ================= */
+VIEWS.item=(p,V)=>{const it=S.items.find(x=>x.id===p.id);if(!it||it.deletedAt){back();return;}const def=TYPES[it.type];const reuse=reuseMap();
+ const rows=def.f.map(([k,t,o={}])=>{let v=it.f[k];if(v==null||v==='')return '';
+  const secret=t==='secret'||o.hidden;let disp=t==='select'&&v==='none'?T('sec_none'):t==='date'?fmtDate(v):o.card?grp4(v):v;
+  const masked=o.card?'•••• •••• •••• '+String(v).replace(/\s/g,'').slice(-4):'••••••••';let badges='';
+  if(o.pw){const st=strength(v);const n=reuse.get(v)||0;badges=`<div class="badges"><span class="badge" style="color:${STR_COL[st.s]}">${T('str_'+st.s)}</span>${n>1?`<span class="badge b-warn">${T('reused_n',{n})}</span>`:''}${Date.now()-(it.pwChanged||it.created)>365*864e5?`<span class="badge b-mut">${T('old_pw')}</span>`:''}<button class="btn sm" data-breach="${k}">🔎 ${T('check_breach')}</button><span class="mlbl" data-bres="${k}"></span></div>`;}
+  if((o.exp&&it.type==='card')||(k==='docExpiry')){const e=expInfo(it);if(e)badges=`<div class="badges"><span class="badge ${e.past?'b-bad':'b-warn'}">${e.past?T('exp_past'):T('exp_soon',{d:e.days})}</span></div>`;}
+  return `<div class="fld"><label>${T('f_'+k)}</label><div class="fline"><div class="fv ${t==='secret'?'mono':''} ${t==='area'?'pre':''}" data-k="${k}" ${t==='secret'||t==='url'?'dir="ltr"':''}>${secret?masked:esc(disp)}</div>
+  ${secret?`<button class="fa" data-show="${k}" aria-label="${T('show')}">👁</button>`:''}<button class="fa" data-copy="${k}" aria-label="${T('copy')}">⧉</button>${t==='url'?`<button class="fa" data-open="${k}" aria-label="${T('open_site')}">↗</button>`:''}</div>${badges}</div>`;}).join('');
+ V.innerHTML=`${topbar(it.title,T('ts_'+it.type),`<button class="ib" id="ifav" aria-label="${T('f_fav')}" aria-pressed="${!!it.fav}">${it.fav?'★':'☆'}</button><button class="ib" id="iedit" aria-label="${T('edit')}">✏️</button>`)}
+ <main class="wrap"><div class="card">${rows||`<p class="empty">—</p>`}</div><p class="mlbl" style="text-align:center">${T('created_at',{d:fmtDate(it.created)})} · ${T('updated_at',{d:fmtDate(it.updated)})}</p>
+ <button class="btn wide" id="iedit2" style="margin-top:14px">✏️ ${T('edit')}</button>${foot()}</main>`;
+ wire(V);const shown={};
+ $$('[data-show]',V).forEach(b=>b.onclick=()=>{const k=b.dataset.show,f=def.f.find(x=>x[0]===k),o=f[2]||{},v=it.f[k],el=$(`.fv[data-k="${k}"]`,V);shown[k]=!shown[k];
+  el.innerHTML=shown[k]?esc(o.card?grp4(v):v):(o.card?'•••• •••• •••• '+String(v).replace(/\s/g,'').slice(-4):'••••••••');b.textContent=shown[k]?'🙈':'👁';b.setAttribute('aria-label',shown[k]?T('hide'):T('show'));});
+ $$('[data-copy]',V).forEach(b=>b.onclick=()=>{const k=b.dataset.copy;let v=it.f[k];if(k==='number')v=String(v).replace(/\s/g,'');copyText(String(v));});
+ $$('[data-open]',V).forEach(b=>b.onclick=()=>{let u=String(it.f[b.dataset.open]).trim();if(!/^https?:\/\//i.test(u))u='https://'+u;try{const x=new URL(u);if(/^https?:$/.test(x.protocol))window.open(x.href,'_blank','noopener,noreferrer');}catch(e){}});
+ $$('[data-breach]',V).forEach(b=>b.onclick=async()=>{if(!(await hibpConsent()))return;const out=$(`[data-bres="${b.dataset.breach}"]`,V);b.disabled=true;out.textContent=T('checking');
+  try{const n=await pwnedCount(it.f[b.dataset.breach]);out.textContent=n?T('breach_found',{n:n.toLocaleString()}):T('breach_clean');out.style.color=n?'var(--bad)':'var(--ok)';it.breach=n;it.breachAt=Date.now();await saveItem(it);}
+  catch(e){out.textContent=T('breach_err');out.style.color='var(--bad)';}b.disabled=false;});
+ const ed=async()=>{const r=await editItem(it);if(r==='deleted'){back();return;}rerender();};$('#iedit',V).onclick=ed;$('#iedit2',V).onclick=ed;
+ $('#ifav',V).onclick=async()=>{it.fav=!it.fav;await saveItem(it);toast(it.fav?T('fav_on'):T('fav_off'));rerender();};};
+
+/* ================= edit dialog ================= */
+function inputFor([k,t,o={}],v){const id='e_'+k;const L=`<label class="lbl" for="${id}">${T('f_'+k)}</label>`;v=v==null?'':v;
+ if(t==='area')return L+`<textarea id="${id}" class="inp" autocomplete="off" spellcheck="false">${esc(v)}</textarea>`;
+ if(t==='select')return L+`<select id="${id}" class="inp">${o.opts.map(x=>`<option value="${x}" ${x===v?'selected':''}>${x==='none'?T('sec_none'):x}</option>`).join('')}</select>`;
+ if(t==='date')return L+`<input id="${id}" class="inp" type="date" value="${esc(v)}">`;
+ if(t==='secret')return L+`<div class="pwbox"><input id="${id}" class="inp mono" type="password" dir="ltr" value="${esc(o.card?grp4(v):v)}" autocomplete="new-password" spellcheck="false" autocapitalize="off" ${o.num?'inputmode="numeric"':''}><button type="button" class="eye" data-eye="${id}" aria-label="${T('show')}">👁</button></div>
+  ${o.gen?`<div class="meter"><i id="${id}_m"></i></div><div class="mlbl" id="${id}_ml"></div><button type="button" class="btn sm" data-gen="${id}" style="margin-top:8px">🎲 ${T('gen_new')}</button>`:''}`;
+ return L+`<input id="${id}" class="inp" type="${t==='url'?'url':'text'}" ${t==='url'||o.exp?'dir="ltr"':''} value="${esc(v)}" autocomplete="off" spellcheck="false" ${o.ph?`placeholder="${o.ph}"`:''} ${o.exp?'inputmode="numeric" maxlength="7"':''}>`;}
+function editItem(src){const isNew=!src.id;const it=isNew?{id:uid(),type:src.type,title:'',fav:false,f:{},created:Date.now()}:JSON.parse(JSON.stringify(src));const def=TYPES[it.type];
+ return modal(`<h3 class="mh">${def.ic} ${esc(isNew?T('ts_'+it.type):T('edit_item'))}</h3>
+ <label class="lbl" for="e_title">${T('f_title')}</label><input id="e_title" class="inp" value="${esc(it.title)}" placeholder="${esc(T('title_ph_'+it.type))}" autocomplete="off" ${isNew?'autofocus':''}>
+ ${def.f.map(fd=>inputFor(fd,it.f[fd[0]])).join('')}<label class="chk"><input type="checkbox" id="e_fav" ${it.fav?'checked':''}> ${T('f_fav')}</label><div class="err" id="e_err" role="alert"></div>
+ <div class="mact"><button class="btn" data-a="cancel">${T('cancel')}</button><button class="btn pri" data-a="save">${T('save')}</button></div>
+ ${isNew?'':`<button class="btn danger wide" data-a="del" style="margin-top:14px">🗑️ ${T('delete')}</button>`}`,
+ {sticky:true,onOpen:(s,close)=>{
+  def.f.forEach(([k,t,o={}])=>{const i=$('#e_'+k,s);if(o.gen)bindMeter(i,$('#e_'+k+'_m',s),$('#e_'+k+'_ml',s));
+   if(o.exp)i.addEventListener('input',()=>{let d=i.value.replace(/\D/g,'').slice(0,4);i.value=d.length>2?d.slice(0,2)+'/'+d.slice(2):d;});
+   if(o.card)i.addEventListener('input',()=>{const c=i.selectionStart===i.value.length;i.value=grp4(i.value.replace(/\D/g,'').slice(0,19));if(c)i.selectionStart=i.selectionEnd=i.value.length;});});
+  $$('[data-gen]',s).forEach(b=>b.onclick=()=>{const i=$('#'+b.dataset.gen,s);i.value=genPw(genOpts());i.type='text';i.dispatchEvent(new Event('input'));const eye=s.querySelector(`[data-eye="${b.dataset.gen}"]`);if(eye)eye.textContent='🙈';});
+  $('[data-a=cancel]',s).onclick=()=>close(null);
+  $('[data-a=save]',s).onclick=async()=>{const nf={};def.f.forEach(([k,t,o={}])=>{let v=$('#e_'+k,s).value;v=t==='area'?v.replace(/\s+$/,''):v.trim();if(o.card)v=v.replace(/\s/g,'');if(v)nf[k]=v;});
+   let title=$('#e_title',s).value.trim();if(!title)title=hostOf(nf.url)||nf.ssid||nf.bankName||nf.docType||'';
+   if(!title){$('#e_err',s).textContent=T('need_title');$('#e_title',s).focus();return;}
+   const pwChanged=pwFieldsOf({type:it.type,f:nf}).join('\u0001')!==pwFieldsOf(it).join('\u0001');
+   it.title=title;it.f=nf;it.fav=$('#e_fav',s).checked;if(isNew||pwChanged){it.pwChanged=Date.now();delete it.breach;}
+   try{await saveItem(it);toast(T('saved'));close(it);}catch(e){$('#e_err',s).textContent=T('save_fail',{e:e.message});}};
+  const del=$('[data-a=del]',s);if(del)del.onclick=async()=>{if(!(await confirmDlg(T('del_confirm',{n:it.title}),{danger:true,ok:T('delete')})))return;
+   const orig=S.items.find(x=>x.id===it.id);orig.deletedAt=Date.now();await saveItem(orig);toast(T('moved_trash'));close('deleted');};}});}
+
+/* ================= files ================= */
+VIEWS.files=(p,V)=>{const cat=p.cat||'all';const list=liveFiles().filter(f=>cat==='all'||f.cat===cat).sort((a,b)=>b.created-a.created);
+ V.innerHTML=`${topbar(T('files'),T('items_n',{n:liveFiles().length}))}<main class="wrap">
+ <div class="chips">${['all',...FCATS].map(c=>`<button data-cat="${c}" aria-pressed="${c===cat}">${T('fc_'+c)}</button>`).join('')}</div>
+ <div class="two" style="margin-bottom:14px"><button class="btn" id="fcamb">📷 ${T('files_camera')}</button><button class="btn pri" id="faddb">＋ ${T('files_add')}</button></div>
+ <div id="fprog" class="mlbl" style="text-align:center"></div>
+ ${list.length?`<div class="fgrid">${list.map(f=>`<button class="ft" data-fid="${esc(f.id)}" aria-label="${esc(f.name)}">${f.hasThumb?'<img alt="">':''}<span>${ficon(f.type)}</span><small>${esc(f.name)}</small></button>`).join('')}</div>`:`<p class="empty">${T('files_empty')}</p>`}${foot()}</main>`;
+ wire(V);$$('[data-cat]',V).forEach(b=>b.onclick=()=>{S.stack[S.stack.length-1].params={cat:b.dataset.cat};render();});
+ const add=async inp=>{const fl=await pickFile(inp);if(!fl.length)return;const c=cat==='all'?'other':cat;let n=0;
+  for(let i=0;i<fl.length;i++){const f=fl[i];const pr=$('#fprog');if(pr)pr.textContent=T('encrypting',{i:i+1,n:fl.length});
+   if(f.size>100*1048576){toast(T('file_big',{n:f.name}),'bad');continue;}try{await addOneFile(f,c);n++;}catch(e){toast(T('err_generic',{e:e.message}),'bad');}}
+  rerender();if(n){toast(T('files_added',{n}));if(inp.id==='fpick'&&!LS.get('origNote',false)){LS.set('origNote',true);await confirmDlg(T('orig_note'),{ok:T('confirm'),no:T('close')});}}};
+ $('#faddb',V).onclick=()=>add($('#fpick'));$('#fcamb',V).onclick=()=>add($('#fcam'));
+ $$('[data-fid]',V).forEach(async b=>{const m=S.files.find(x=>x.id===b.dataset.fid);b.onclick=()=>viewFile(m);longPress(b,async()=>{await editFile(m);rerender();});
+  if(m.hasThumb){try{const u=await thumbURL(m.id);const img=$('img',b);if(u&&img){img.src=u;$('span',b).classList.add('hide');$('small',b).classList.add('hide');}}catch(e){}}});};
+async function viewFile(m){let blob,url;try{blob=await fileBlob(m);url=URL.createObjectURL(blob);S.urls.push(url);}catch(e){toast(T('file_fail'),'bad');return;}
+ const t=m.type;const body=/^image\//.test(t)?`<img src="${url}" alt="${esc(m.name)}">`:/^video\//.test(t)?`<video src="${url}" controls playsinline></video>`:/^audio\//.test(t)?`<audio src="${url}" controls style="width:100%"></audio>`:`<p class="empty" style="font-size:3rem;padding:18px">${ficon(t)}</p>`;
+ const r=await modal(`<h3 class="mh">${esc(m.name)}</h3><p class="mlbl">${fmtSize(m.size)} · ${T('fc_'+m.cat)} · ${fmtDate(m.created)}</p><div class="viewer">${body}</div>
+ <p class="mlbl" style="margin-top:8px">${T('download_warn')}</p><div class="mact"><button class="btn" data-v="share">↗ ${T('file_share')}</button><button class="btn" data-v="dl">⬇ ${T('file_download')}</button>${/pdf|text/.test(t)?`<button class="btn" data-v="open">${T('file_open')}</button>`:''}</div>
+ <div class="mact"><button class="btn" data-v="edit">✏️ ${T('edit')}</button><button class="btn pri" data-v="close">${T('close')}</button></div>`,
+ {onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=async()=>{const v=b.dataset.v;const file=new File([blob],m.name,{type:m.type});
+  if(v==='share'){if(navigator.canShare&&navigator.canShare({files:[file]})){try{await hold(()=>navigator.share({files:[file],title:m.name}));}catch(e){}}else saveFile(file);}
+  else if(v==='dl')saveFile(file);else if(v==='open'){hold(async()=>{window.open(url,'_blank','noopener');});}else close(v);})});
+ if(r==='edit'){await editFile(m);rerender();}}
+function editFile(m){return modal(`<h3 class="mh">${ficon(m.type)} ${T('edit')}</h3><label class="lbl" for="ef_n">${T('file_name')}</label><input id="ef_n" class="inp" value="${esc(m.name)}" autocomplete="off">
+ <label class="lbl" for="ef_c">${T('file_cat')}</label><select id="ef_c" class="inp">${FCATS.map(c=>`<option value="${c}" ${c===m.cat?'selected':''}>${T('fc_'+c)}</option>`).join('')}</select>
+ <div class="mact"><button class="btn" data-a="x">${T('cancel')}</button><button class="btn pri" data-a="s">${T('save')}</button></div><button class="btn danger wide" data-a="d" style="margin-top:14px">🗑️ ${T('delete')}</button>`,
+ {sticky:true,onOpen:(s,close)=>{$('[data-a=x]',s).onclick=()=>close(null);
+  $('[data-a=s]',s).onclick=async()=>{m.name=$('#ef_n',s).value.trim()||m.name;m.cat=$('#ef_c',s).value;await saveFileMeta(m);toast(T('saved'));close('saved');};
+  $('[data-a=d]',s).onclick=async()=>{if(!(await confirmDlg(T('del_confirm',{n:m.name}),{danger:true,ok:T('delete')})))return;m.deletedAt=Date.now();await saveFileMeta(m);toast(T('moved_trash'));close('deleted');};}});}
+
+/* ================= generator ================= */
+VIEWS.gen=(p,V)=>{const o=genOpts();const opt=(k)=>`<label class="chk"><input type="checkbox" data-o="${k}" ${o[k]?'checked':''}> ${T('gen_'+k)}</label>`;
+ V.innerHTML=`${topbar(T('gen_t'))}<main class="wrap"><div class="genout" id="gout" aria-live="polite"></div><div class="meter"><i id="gm"></i></div><div class="mlbl" id="gml" style="text-align:center"></div>
+ <div class="two" style="margin:14px 0"><button class="btn pri" id="gnew">🎲 ${T('gen_new')}</button><button class="btn" id="gcopy">⧉ ${T('copy')}</button></div>
+ <div class="card"><label class="lbl" for="glen" id="glenl">${T('gen_length',{n:o.len})}</label><input type="range" class="range" id="glen" min="8" max="64" value="${o.len}">
+ ${opt('lower')}${opt('upper')}${opt('digits')}${opt('symbols')}${opt('ambig')}</div>${foot()}</main>`;wire(V);
+ const out=$('#gout',V);const hidden=document.createElement('input');const make=()=>{const oo=genOpts();out.textContent=genPw(oo);hidden.value=out.textContent;hidden.dispatchEvent(new Event('input'));};
+ bindMeter(hidden,$('#gm',V),$('#gml',V));
+ $('#glen',V).oninput=e=>{LS.set('genopt',Object.assign(genOpts(),{len:+e.target.value}));$('#glenl',V).textContent=T('gen_length',{n:e.target.value});make();};
+ $$('[data-o]',V).forEach(c=>c.onchange=()=>{const g=genOpts();g[c.dataset.o]=c.checked;LS.set('genopt',g);make();});
+ $('#gnew',V).onclick=make;$('#gcopy',V).onclick=()=>copyText(out.textContent);make();};
+
+/* ================= health ================= */
+VIEWS.health=(p,V)=>{const L=live();const withPw=L.filter(it=>pwFieldsOf(it).length);const reuse=reuseMap();
+ const weak=withPw.filter(it=>pwFieldsOf(it).some(pw=>strength(pw).s<2));const reused=withPw.filter(it=>pwFieldsOf(it).some(pw=>reuse.get(pw)>1));
+ const old=withPw.filter(it=>Date.now()-(it.pwChanged||it.created)>365*864e5);const exp=L.filter(it=>expInfo(it));const breached=withPw.filter(it=>it.breach>0);
+ const bad=new Set([...weak,...reused,...breached].map(x=>x.id)).size;const score=withPw.length?Math.max(0,Math.round(100-bad/withPw.length*100-old.length/withPw.length*10)):100;
+ const sec=(title,list)=>`<h3 class="sec">${title} (${list.length})</h3>${list.length?itemRows(sortItems(list.slice())):`<p class="mlbl">${T('h_all_good')}</p>`}`;
+ V.innerHTML=`${topbar(T('health_t'))}<main class="wrap">${withPw.length?`<div class="card" style="text-align:center"><div class="score">${score}</div><div class="mlbl">${T('h_score')}</div></div>
+ <button class="btn wide" id="hcheck">🔎 ${T('h_checkall')}</button><p class="mlbl" id="hprog" style="text-align:center"></p>
+ ${sec(T('h_breached'),breached)}${sec(T('h_weak'),weak)}${sec(T('h_reused'),reused)}${sec(T('h_old'),old)}`:`<p class="empty">${T('h_none')}</p>`}
+ ${exp.length?sec(T('h_expiring'),exp):''}<p class="mlbl" style="margin-top:16px">${T('h_note')}</p>${foot()}</main>`;
+ wire(V);wireRows(V);const hc=$('#hcheck',V);if(hc)hc.onclick=async()=>{if(!(await hibpConsent()))return;hc.disabled=true;const pr=$('#hprog',V);let i=0;
+  for(const it of withPw){i++;pr.textContent=T('h_checking',{i,n:withPw.length});let mx=0;
+   try{for(const pw of pwFieldsOf(it))mx=Math.max(mx,await pwnedCount(pw));it.breach=mx;it.breachAt=Date.now();await saveItem(it);}catch(e){pr.textContent=T('breach_err');hc.disabled=false;return;}await sleep(120);}
+  rerender();};};
+
+/* ================= settings ================= */
+function backupDlg(){return (async()=>{let file;try{file=await buildBackup();}catch(e){toast(T('err_generic',{e:e.message}),'bad');return;}
+ const r=await modal(`<h3 class="mh">${T('b_ready')}</h3><p class="mtext">${esc(file.name)} · ${fmtSize(file.size)}</p><p class="mlbl">${T('b_hint')}</p>
+ <div class="stack" style="margin-top:12px">${navigator.canShare&&navigator.canShare({files:[file]})?`<button class="btn pri big" data-v="share">↗ ${T('b_share')}</button>`:''}<button class="btn big" data-v="save">⬇ ${T('b_save')}</button><button class="link" data-v="0">${T('cancel')}</button></div>`,
+ {onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v))});
+ if(r==='share'){try{await hold(()=>navigator.share({files:[file],title:file.name}));LS.set('lastBackup',Date.now());toast(T('b_made'));}catch(e){if(e.name!=='AbortError'){saveFile(file);LS.set('lastBackup',Date.now());}}}
+ else if(r==='save'){saveFile(file);LS.set('lastBackup',Date.now());toast(T('b_made'));}rerender();})();}
+VIEWS.settings=async(p,V)=>{const q=await DB.get('meta','quick'),bio=await DB.get('meta','bio');const al=LS.get('autolock',1),cl=LS.get('clip',30),lb=LS.get('lastBackup',0);
+ let pers=null,est=null;try{pers=await navigator.storage.persisted();est=await navigator.storage.estimate();}catch(e){}
+ if(!S.unlocked||S.stack[S.stack.length-1].view!=='settings')return;
+ const seg=(name,vals,cur,lbl)=>`<div class="seg">${vals.map(v=>`<button data-${name}="${v}" aria-pressed="${v===cur}">${lbl(v)}</button>`).join('')}</div>`;
+ V.innerHTML=`${topbar(T('settings'))}<main class="wrap">
+ <h3 class="sec">${T('s_user')}</h3><input id="suser" class="inp" value="${esc(LS.get('user',''))}" placeholder="${T('s_user_ph')}" autocomplete="off">
+ <h3 class="sec">${T('s_look')}</h3><label class="lbl">${T('s_lang')}</label>${seg('lang',LANGS.map(l=>l.c),CUR,c=>LANGS.find(l=>l.c===c).n)}<div id="slook"></div>
+ <h3 class="sec">${T('s_security')}</h3>
+ <div class="card"><label class="lbl" style="margin-top:0">${T('s_autolock')}</label>${seg('al',[0,1,5,15],al,v=>T('al_'+v))}<p class="mlbl">${T('idle_note')}</p>
+ <label class="lbl">${T('s_clip')}</label>${seg('cl',[0,15,30,60],cl,v=>v?T('clip_s',{n:v}):T('clip_off'))}<p class="mlbl">${T('clip_note')}</p></div>
+ <div class="card"><div class="kv"><span>${T('s_bio')}</span><span>${bio?T('bio_on'):T('bio_off')}</span></div><div class="two" style="margin-top:8px">${bio?`<button class="btn" id="sbiox">${T('bio_remove')}</button>`:`<button class="btn" id="sbio">👆 ${T('bio_set')}</button>`}</div><p class="mlbl">${T('bio_note')}</p></div>
+ <div class="card"><div class="kv"><span>${T('s_quick')}</span><span>${q?(q.kind==='pin'?T('q_is_pin'):T('q_is_pattern')):T('q_none')}</span></div>
+ <div class="two" style="margin-top:8px"><button class="btn" id="sqpin">🔢 ${T('q_set_pin')}</button><button class="btn" id="sqpat">⠿ ${T('q_set_pattern')}</button></div>${q?`<button class="btn wide" id="sqx" style="margin-top:10px">${T('q_remove')}</button>`:''}<p class="mlbl">${T('q_note')}</p></div>
+ <div class="two"><button class="btn" id="schpw">🔑 ${T('s_change_pw')}</button><button class="btn" id="srec">🧾 ${T('s_new_rec')}</button></div>
+ <h3 class="sec">${T('s_backup')}</h3><div class="card"><p class="mlbl" style="margin:0 0 10px">${lb?T('b_last',{d:fmtDate(lb)}):T('b_never')}</p><div class="stack"><button class="btn pri" id="sbk">🛡️ ${T('b_export')}</button><button class="btn" id="srs">↩ ${T('b_import')}</button></div><p class="mlbl">${T('b_hint')}</p></div>
+ <div class="card"><div class="stack"><button class="btn" id="scsv">📥 ${T('csv_import')}</button><p class="mlbl">${T('csv_note')}</p><button class="btn danger" id="scsvx">📤 ${T('csv_export')}</button></div></div>
+ <h3 class="sec">${T('s_storage')}</h3><div class="card"><p>${pers===true?T('st_persist_ok'):T('st_persist_no')}</p>${est&&est.usage!=null?`<p class="mlbl">${T('st_used',{u:fmtSize(est.usage)})}</p>`:''}
+ ${location.hostname===SHARED_HOST?`<p class="mtext" style="color:var(--warn);margin-bottom:0">${esc(T('shared_origin',{h:SHARED_HOST}))}</p>`:''}</div>
+ <h3 class="sec">${T('s_help')}</h3><div class="two"><button class="btn" id="sguide">📖 ${T('s_guide')}</button><button class="btn" data-go="about">ℹ️ ${T('about')}</button></div>
+ <a class="btn wide" style="margin-top:10px;text-decoration:none" href="privacy_policy.html" target="_blank" rel="noopener">🔒 ${T('s_privacy')}</a>
+ <h3 class="sec">${T('s_danger')}</h3><button class="btn danger wide" id="sreset">${T('reset_all')}</button>${foot()}</main>`;
+ wire(V);lookControls($('#slook',V));
+ $('#suser',V).oninput=e=>LS.set('user',e.target.value.slice(0,40));
+ $$('[data-lang]',V).forEach(b=>b.onclick=()=>{setLang(b.dataset.lang);rerender();});
+ $$('[data-al]',V).forEach(b=>b.onclick=()=>{LS.set('autolock',+b.dataset.al);rerender();});
+ $$('[data-cl]',V).forEach(b=>b.onclick=()=>{LS.set('clip',+b.dataset.cl);rerender();});
+ const sb=$('#sbio',V);if(sb)sb.onclick=async()=>{if(!(await bioAvailable())){toast(T('bio_unsupported'),'bad');return;}doSetupBio();};
+ const sbx=$('#sbiox',V);if(sbx)sbx.onclick=async()=>{await DB.del('meta','bio');toast(T('bio_removed'));rerender();};
+ $('#sqpin',V).onclick=()=>doSetupQuick('pin');$('#sqpat',V).onclick=()=>doSetupQuick('pattern');
+ const sqx=$('#sqx',V);if(sqx)sqx.onclick=async()=>{await DB.del('meta','quick');toast(T('q_removed'));rerender();};
+ $('#schpw',V).onclick=changePwDlg;
+ $('#srec',V).onclick=async()=>{if(!(await confirmDlg(T('new_rec_c'))))return;const code=await newRecovery();
+  await modal(`<h3 class="mh">${T('rec_t')}</h3><p class="mtext">${T('rec_d')}</p><div class="reccode">${esc(code)}</div><button class="btn wide" id="nrc">⧉ ${T('rec_copy')}</button>
+  <label class="chk"><input type="checkbox" id="nrk"> ${T('rec_check')}</label><div class="mact"><button class="btn pri" id="nrg" disabled>${T('done')}</button></div>`,
+  {sticky:true,onOpen:(s,close)=>{$('#nrc',s).onclick=()=>copyText(code);$('#nrk',s).onchange=e=>{$('#nrg',s).disabled=!e.target.checked;};$('#nrg',s).onclick=()=>close();}});};
+ $('#sbk',V).onclick=backupDlg;$('#srs',V).onclick=restoreFlow;
+ $('#scsv',V).onclick=async()=>{const [f]=await pickFile($('#fcsv'));if(!f)return;const list=csvToLogins(await f.text());if(!list.length){toast(T('csv_none'),'bad');return;}
+  const r=await importLogins(list);toast(T('csv_done',r));await confirmDlg(T('csv_delete_hint'),{ok:T('confirm'),no:T('close')});rerender();};
+ $('#scsvx',V).onclick=async()=>{const w=T('export_word');const a=await promptDlg(T('csv_export_t'),{text:T('csv_export_warn',{w}),danger:true,ok:T('csv_export')});
+  if(a==null||a.trim()!==w)return;const {n,text}=loginsCSV();saveFile(new File(['\uFEFF'+text],`vaultnest-passwords-PLAINTEXT-${ymd()}.csv`,{type:'text/csv'}));toast(T('csv_exported',{n}));};
+ $('#sguide',V).onclick=()=>modal('<div id="gh"></div>',{onOpen:(s,close)=>obSlides($('#gh',s),()=>close(),false)});
+ $('#sreset',V).onclick=async()=>{if(!(await confirmDlg(T('reset_c1'),{danger:true,ok:T('delete')})))return;const w=T('reset_word');
+  const a=await promptDlg(T('reset_c2',{w}),{danger:true,ok:T('delete')});if(a==null||a.trim()!==w)return;
+  S.unlocked=false;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;$('#view').innerHTML='';await DB.wipe();LS.clearAll();toast(T('reset_done'));setTimeout(()=>location.reload(),700);};
+ if(S.keepY!=null)window.scrollTo(0,S.keepY);};
+function changePwDlg(){return modal(`<h3 class="mh">${T('s_change_pw')}</h3><label class="lbl" for="chc">${T('cur_pw')}</label><div class="pwbox"><input id="chc" class="inp" type="password" dir="ltr" autocomplete="current-password" autofocus><button type="button" class="eye" data-eye="chc">👁</button></div>
+ ${pwFields('ch')}<div class="err" id="cherr" role="alert"></div><div class="mact"><button class="btn" data-a="x">${T('cancel')}</button><button class="btn pri" data-a="s">${T('save')}</button></div>`,
+ {sticky:true,onOpen:(s,close)=>{bindMeter($('#ch1',s),$('#chm',s),$('#chml',s));$('[data-a=x]',s).onclick=()=>close();
+  $('[data-a=s]',s).onclick=async()=>{const err=$('#cherr',s);try{const raw=await unwrapPw($('#chc',s).value);raw.fill(0);}catch(e){err.textContent=T('wrong_pw');return;}
+   const pw=await readPwFields(s,'ch',err);if(!pw)return;await setMasterPw(S.dekRaw,pw);toast(T('pw_changed'));close();};}});}
+
+/* ================= about ================= */
+VIEWS.about=async(p,V)=>{const errs=JSON.parse(localStorage.getItem(LSP+'errlog')||'[]');
+ V.innerHTML=`${topbar(T('about'))}<main class="wrap"><div style="text-align:center;margin:10px 0 18px"><div class="dialwrap" style="margin:0 auto 8px;width:110px">${dialSVG()}</div>
+ <h2 style="font-family:var(--fd);color:var(--acc);font-size:1.6rem">VaultNest</h2><p class="mlbl">${T('app_sub')} · ${T('ab_version')} ${APP_VERSION}</p></div>
+ <div class="card"><div class="kv"><span>${T('ab_version')}</span><span>${APP_VERSION}</span></div><div class="kv"><span>${T('ab_dev')}</span><span>Barak Aflalo</span></div>
+ <div class="kv"><span>${T('ab_platform')}</span><span>PWA · HTML5</span></div><div class="kv"><span>${T('ab_storage')}</span><span>${T('ab_storage_v')}</span></div><div class="kv"><span>${T('ab_license')}</span><span>© AppNest 2026</span></div></div>
+ <h3 class="sec">${T('ab_security')}</h3><div class="card"><p>${T('sec_text')}</p></div>
+ <div class="stack" style="margin-top:14px"><a class="btn" href="${STORE_URL}" target="_blank" rel="noopener" style="text-decoration:none">🏪 ${T('ab_store')}</a>
+ <button class="btn" id="ashare">↗ ${T('ab_share')}</button><a class="btn" href="mailto:${FEEDBACK}?subject=VaultNest%20${APP_VERSION}" style="text-decoration:none">✉️ ${T('ab_feedback')}</a>
+ <button class="btn" id="aguide">📖 ${T('s_guide')}</button><a class="btn" href="privacy_policy.html" target="_blank" rel="noopener" style="text-decoration:none">🔒 ${T('s_privacy')}</a></div>
+ <div class="card" style="margin-top:14px"><p class="mlbl" style="margin:0">${T('ab_disclaimer')}</p></div>
+ <button class="btn wide" id="adiag" style="margin-top:6px">🧰 ${T('ab_diag')}</button><p class="mlbl" style="text-align:center">${T('ab_diag_note')}</p>${foot()}</main>`;
+ wire(V);$('#ashare',V).onclick=async()=>{const u=location.origin+location.pathname;const txt='VaultNest — '+T('app_sub')+(LS.get('user','')?' ('+LS.get('user','')+')':'');
+  if(navigator.share){try{await hold(()=>navigator.share({title:'VaultNest',text:txt,url:u}));}catch(e){}}else copyText(u);};
+ $('#aguide',V).onclick=()=>modal('<div id="gh"></div>',{onOpen:(s,close)=>obSlides($('#gh',s),()=>close(),false)});
+ $('#adiag',V).onclick=async()=>{let pers='?',sw='none';try{pers=await navigator.storage.persisted();}catch(e){}if(navigator.serviceWorker&&navigator.serviceWorker.controller)sw='active';
+  const bio=!!(await DB.get('meta','bio')),q=await DB.get('meta','quick');
+  const rep=['VaultNest '+APP_VERSION,'origin: '+location.origin,'ua: '+navigator.userAgent,'lang: '+CUR+' theme: '+LS.get('theme','gold')+'/'+LS.get('mode','night'),
+   'standalone: '+matchMedia('(display-mode: standalone)').matches,'persisted: '+pers,'sw: '+sw,'items: '+S.items.length+' files: '+S.files.length,
+   'quick: '+(q?q.kind:'none')+' bio: '+bio,'webauthn: '+!!window.PublicKeyCredential,'errors:',...errs.map(e=>new Date(e.t).toISOString()+' '+e.m+' @'+e.s+':'+e.l)].join('\n');
+  await modal(`<h3 class="mh">${T('ab_diag')}</h3><pre class="card mono" style="white-space:pre-wrap;font-size:.78rem;direction:ltr;text-align:left">${esc(rep)}</pre><div class="mact"><button class="btn" data-v="c">⧉ ${T('copy')}</button><button class="btn pri" data-v="x">${T('close')}</button></div>`,
+   {onOpen:(s,close)=>{$('[data-v=c]',s).onclick=()=>copyText(rep);$('[data-v=x]',s).onclick=()=>close();}});};};
+
+/* ================= prefs & boot ================= */
+function setLang(c){CUR=LANG[c]?c:'en';LS.set('lang',CUR);const h=document.documentElement;h.lang=CUR;h.dir=RTL.includes(CUR)?'rtl':'ltr';const sk=$('.skip');if(sk)sk.textContent=T('skip_link');}
+function applyLook(){const h=document.documentElement;h.dataset.theme=LS.get('theme','gold');h.dataset.mode=LS.get('mode','night');
+ const bg=getComputedStyle(h).getPropertyValue('--bg').trim()||'#000';const m=$('meta[name=theme-color]');if(m)m.content=bg;}
+function detectLang(){const n=(navigator.language||'he').slice(0,2).toLowerCase();return LANG[n]?n:(n==='iw'?'he':'en');}
+async function boot(){setLang(LS.get('lang',detectLang()));applyLook();
+ if(location.protocol==='file:'){fatal(T('fatal_file'));return;}
+ if(!window.crypto||!crypto.subtle||!window.indexedDB){fatal(T('fatal_crypto'));return;}
+ try{await DB.open();}catch(e){fatal(T('fatal_storage'));return;}
+ const meta=await DB.get('meta','vault');if(meta)showUnlock();else if(LS.get('onboarded',false))showCreate();else showOnboard();
+ if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(e=>logErr('sw '+e.message));}
+boot();
+</script>
+</body>
+</html>
