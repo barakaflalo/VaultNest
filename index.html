@@ -7,8 +7,9 @@
   Single-file PWA. Everything is encrypted on the device (AES-256-GCM, PBKDF2-SHA256 600k).
   Nothing is loaded from outside: no CDN, no fonts, no analytics. One small MIT library (qrcode-generator) is inlined
   for the Wi-Fi QR. The only outside request is the optional Have I Been Pwned range check (k-anonymity) — see pwnedCount().
-  v1.1: attachments, share target (sw.js), TOTP, custom fields/templates, emergency kit, calendar, history, passphrases,
-  Wi-Fi QR, secure item share, document scan, decoy vault.
+  v1.1.1: reliability — safe atomic restore, never delete unreadable records, no trimming of secrets, decoy + share-to-vault removed.
+  v1.1: attachments, TOTP, custom fields/templates, emergency kit, calendar, history, passphrases,
+  Wi-Fi QR, secure item share, document scan.
   CRITICAL FIXES TO KEEP (see AppNest requirements doc v13.1):
    - SW: per-file caching (allSettled), network-first navigation w/ 4s timeout, redirect-clean (Cloudflare 308), skipWaiting
    - navigator.storage.persist(); encrypted backup is the only recovery path
@@ -134,7 +135,7 @@ textarea.inp{min-height:110px;resize:vertical}
 .mwrap{position:absolute;inset:0;background:rgba(0,0,0,.76);display:flex;align-items:flex-end;justify-content:center;pointer-events:auto;animation:fade .15s}
 .sheet{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--surf);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));animation:up .2s ease-out}
 .mh{font-family:var(--fd);font-size:1.2rem;margin-bottom:6px;font-weight:600;word-break:break-word}
-.mtext{margin:6px 0 12px;line-height:1.6}
+.mtext{margin:6px 0 12px;line-height:1.6;white-space:pre-line}
 .mact{display:flex;gap:10px;margin-top:14px}
 .mact .btn{flex:1}
 .mwrap.out{opacity:0;transition:opacity .18s}
@@ -257,7 +258,7 @@ ob1_t:'ברוך הבא לכספת',ob1_d:'מקום אחד לסיסמאות, כר
 ob2_t:'הכול מוצפן, הכול אצלך',ob2_d:'המידע מוצפן ב-AES-256 לפני שהוא נשמר, ונשאר רק במכשיר הזה. שום דבר לא נשלח לשרת.',
 ob3_t:'סיסמה ראשית אחת',ob3_d:'היא המפתח לכל השאר, ואין לנו דרך לשחזר אותה. לכן תקבל גם קוד שחזור — כדאי לרשום אותו על נייר.',
 ob4_t:'פתיחה מהירה',ob4_d:'אחרי ההגדרה אפשר לפתוח עם טביעת אצבע, קוד או סימון על המסך.',
-ob5_t:'גיבוי הוא הביטוח שלך',ob5_d:'אם המכשיר אבד או שנתוני הדפדפן נמחקו, רק קובץ גיבוי יחזיר את המידע. הגיבוי עצמו מוצפן.',
+ob5_t:'גיבוי הוא הביטוח שלך',ob5_d:'אם המכשיר אבד או שנתוני הדפדפן נמחקו, רק קובץ גיבוי יחזיר את המידע. תוכן הגיבוי מוצפן.',
 ob_start:'בוא נתחיל',
 create_t:'יצירת סיסמה ראשית',create_d:'לפחות 10 תווים. משפט קצר שקל לך לזכור עדיף על מילה מסובכת.',
 new_pw:'סיסמה ראשית חדשה',pw_confirm:'הקלד שוב',pw_mismatch:'הסיסמאות לא תואמות',pw_short:'צריך לפחות 10 תווים',
@@ -300,7 +301,7 @@ files_add:'הוסף קבצים',files_camera:'צלם',file_cat:'קטגוריה',
 fc_all:'הכול',fc_id:'תעודות',fc_money:'כספים',fc_home:'בית',fc_car:'רכב',fc_health:'בריאות',fc_other:'אחר',
 files_empty:'אין עדיין קבצים. אפשר להוסיף תמונות, PDF וכל קובץ אחר — הם מוצפנים לפני השמירה.',
 encrypting:'מצפין {i} מתוך {n}…',file_big:'״{n}״ גדול מ-100MB ולא נוסף',files_added:'{n} קבצים נוספו מוצפנים',
-orig_note:'הקובץ המקורי עדיין נמצא בגלריה או בתיקייה שממנה בחרת. אם אתה רוצה שיהיה רק בכספת — מחק אותו משם ידנית. (תמונה שצולמה מתוך הכספת לא נשמרת בגלריה.)',
+orig_note:'הקובץ המקורי עדיין נמצא בגלריה או בתיקייה שממנה בחרת. אם אתה רוצה שיהיה רק בכספת — מחק אותו משם ידנית. גם בצילום מתוך הכספת, יש מצלמות ששומרות עותק בגלריה — כדאי לבדוק.',
 file_share:'שתף',file_download:'הורד',file_open:'פתח',download_warn:'קובץ שמורד או משותף יוצא מהכספת לא מוצפן.',file_fail:'לא הצלחתי לפתוח את הקובץ',
 s_user:'שם משתמש',s_user_ph:'שם או כינוי (מופיע בגיבויים)',s_lang:'שפה',s_look:'מראה',s_theme:'ערכת צבע',s_mode:'מצב תצוגה',mode_night:'🌙 לילה',mode_day:'☀️ יום',
 th_gold:'שחור וזהב',th_silver:'שחור וכסף',th_copper:'לילה ונחושת',th_jade:'ירקן',th_ruby:'בורדו',
@@ -314,9 +315,9 @@ bio_unsupported:'המכשיר או הדפדפן לא תומכים בטביעת �
 bio_note:'יופיעו שתי בקשות לטביעת אצבע — אחת ליצירה ואחת לאימות. טביעת האצבע עצמה לא יוצאת מהטלפון.',
 bio_ok:'טביעת האצבע הופעלה',bio_fail:'טביעת האצבע בוטלה או נכשלה',bio_removed:'טביעת האצבע בוטלה',
 s_change_pw:'שנה סיסמה ראשית',cur_pw:'סיסמה נוכחית',pw_changed:'הסיסמה הראשית עודכנה',
-s_new_rec:'צור קוד שחזור חדש',new_rec_c:'ייווצר קוד שחזור חדש והקוד הקודם יפסיק לעבוד. להמשיך?',
+s_new_rec:'צור קוד שחזור חדש',new_rec_c:'ייווצר קוד שחזור חדש. בכספת שבמכשיר הקוד הקודם יפסיק לעבוד, אבל גיבויים שכבר יצרת יישארו עם הקוד הקודם. להמשיך?',
 s_backup:'גיבוי והעברה',b_export:'צור גיבוי מוצפן',b_import:'שחזר מגיבוי',b_last:'גיבוי אחרון: {d}',b_never:'עוד לא נוצר גיבוי',
-b_hint:'הגיבוי מוצפן ונפתח רק עם הסיסמה הראשית (או קוד השחזור) שהייתה בזמן יצירתו. בטלפון אפשר לשמור אותו ישר ל-Google Drive דרך ״שתף״.',
+b_hint:'תוכן הכספת בגיבוי מוצפן ונפתח רק עם הסיסמה הראשית (או קוד השחזור) שהיו בזמן יצירתו. גלויים בו רק שם המשתמש, התאריך ומספר הרשומות. בטלפון אפשר לשמור אותו ישר ל-Google Drive דרך ״שתף״.',
 b_ready:'הגיבוי מוכן',b_share:'שתף (Drive, מייל…)',b_save:'שמור קובץ',b_made:'הגיבוי נשמר',
 b_pw_prompt:'סיסמה ראשית של הגיבוי',b_pw_text:'הזן את הסיסמה הראשית שהייתה בזמן יצירת הגיבוי.',
 b_replace:'השחזור יחליף את כל התוכן הנוכחי בכספת בתוכן הגיבוי. להמשיך?',b_restored:'הכספת שוחזרה מהגיבוי',b_bad:'הקובץ אינו גיבוי תקין של VaultNest',
@@ -360,26 +361,51 @@ sh_code_is:'זה הקוד לפתיחת הקובץ:',sh_skipped:'{n} קבצים �
 sh_send_file:'שלח את הקובץ',sh_copy_code:'העתק קוד',sh_code_prompt:'קוד הפתיחה',sh_code_text:'הזן את הקוד שקיבלת מהשולח.',sh_wrong:'הקוד שגוי',
 sh_confirm:'לשמור בכספת את ״{n}״ ({f} קבצים מצורפים)?',sh_recv_t:'קבל פריט משותף',sh_recv_d:'פתיחת קובץ שיתוף מוצפן',sh_saved:'הפריט נשמר בכספת',sh_bad:'זה לא קובץ שיתוף של VaultNest',
 sh_need_unlock:'קודם צור או פתח כספת, ואז פתח את קובץ השיתוף',
-st_files_t:'{n} קבצים שותפו לכספת',st_save:'הצפן ושמור',orig_note_short:'הקובץ המקורי עדיין אצלך בגלריה — מחק אותו משם אם צריך.',st_nothing:'לא נמצאה כתובת אתר במה ששותף',
-st_found:'נמצאו {n} פריטים לאתר הזה',st_no_match:'אין עדיין סיסמה לאתר הזה',st_new_login:'צור סיסמה לאתר הזה',
+
+
 kit_t:'ערכת חירום להדפסה',kit_d:'דף אחד עם כתובת האפליקציה, קוד השחזור והוראות — לשמור עם המסמכים החשובים בבית או לתת לבן משפחה שאתה סומך עליו.',
-kit_new:'צור קוד שחזור חדש והדפס אותו',kit_blank:'הדפס עם מקום לכתוב את הקוד ביד',kit_new_note:'קוד חדש מבטל את הקוד הקודם. ההדפסה לא נשמרת בשום מקום.',
+kit_new:'צור קוד שחזור חדש והדפס אותו',kit_blank:'הדפס עם מקום לכתוב את הקוד ביד',kit_new_note:'קוד חדש מחליף את הקוד הקודם בכספת שבמכשיר. גיבויים שכבר יצרת עדיין נפתחים רק עם הקוד הקודם — לכן מיד אחר כך תתבקש ליצור גיבוי חדש.',
 kit_addr:'כתובת האפליקציה',kit_code_note:'הקוד פותח את הכספת במקום הסיסמה הראשית. מי שמחזיק בדף הזה ובקובץ הגיבוי — יכול לפתוח אותה.',kit_backup_where:'איפה שמור קובץ הגיבוי',
 kit_steps_t:'איך משחזרים',kit_s1:'פותחים את כתובת האפליקציה בדפדפן Chrome.',kit_s2:'במסך הפתיחה לוחצים ״יש לי כבר גיבוי — שחזר ממנו״ ובוחרים את קובץ הגיבוי.',
 kit_s3:'מזינים את הסיסמה הראשית — או את קוד השחזור מהדף הזה.',kit_s4:'אם נפתח עם קוד השחזור: בהגדרות בוחרים סיסמה ראשית חדשה.',kit_warn:'שמור את הדף במקום בטוח ולא ליד הטלפון.',
-kit_after:'אם ההדפסה לא הצליחה — זה הקוד החדש. הקוד הקודם כבר לא עובד.',
-cal_t:'תזכורת ביומן',cal_title:'{n}: התוקף פג ב-{d}',cal_details:'תזכורת מ-VaultNest לחדש לפני שפג התוקף.',cal_when:'האירוע ייקבע ל-{d} (חודש לפני)',
-cal_privacy:'רק הכותרת והתאריך עוברים ליומן — בלי מספרים או פרטים סודיים.',cal_google:'הוסף ל-Google Calendar',cal_ics:'קובץ יומן (לכל יומן אחר)',
+kit_after:'אם ההדפסה לא הצליחה — זה הקוד החדש. בכספת שבמכשיר הקוד הקודם כבר לא עובד; גיבויים ישנים עדיין צריכים את הקוד הקודם.',
+cal_t:'תזכורת ביומן',cal_title:'{n}: התוקף פג ב-{d}',cal_details:'תזכורת מ-VaultNest לחדש לפני שפג התוקף.',cal_when:'האירוע ייקבע ל-{d}, 30 יום לפני התוקף',
+cal_privacy:'מה שכתוב בכותרת עובר ל-Google או לקובץ היומן. אל תכתוב בה מספר מסמך או פרט סודי.',cal_google:'הוסף ל-Google Calendar',cal_ics:'קובץ יומן (לכל יומן אחר)',
 wifi_qr:'QR להתחברות',wifi_qr_d:'אורח סורק במצלמה ומתחבר לרשת. מי שסורק מקבל את הסיסמה.',
 hist_t:'היסטוריית סיסמאות',hist_d:'ערכים קודמים שהוחלפו בפריט הזה (עד 15).',hist_clear:'נקה היסטוריה',hist_clear_c:'למחוק את כל הערכים הקודמים של הפריט הזה?',
 gen_chars:'תווים',gen_words:'מילים',gen_wcount:'מספר מילים: {n}',gen_wlang:'שפת המילים',gen_sep:'מפריד',gen_space:'רווח',gen_cap:'אות גדולה בתחילת כל מילה',gen_num:'הוסף ספרה',
 gen_words_note:'משפט-סיסמה מכמה מילים אקראיות קל יותר להקליד ולזכור, ועדיין חזק. מילים בעברית מתאימות רק לאתרים שמקבלים עברית בסיסמה.',
 gen_default_note:'ההגדרות כאן משמשות גם את כפתור ״צור סיסמה״ בחלון העריכה.',
-dc_t:'כספת הסוואה',dc_short:'סיסמה שנייה שפותחת כספת נפרדת ותמימה, למקרה שמכריחים אותך לפתוח.',
-dc_d:'סיסמת ההסוואה פותחת כספת נפרדת. מי שנכנס איתה לא רואה את הפריטים האמיתיים, ולא רואה שיש עוד כספת. חשוב: בכספת ההסוואה אין פתיחה מהירה, קוד שחזור או מחיקה, וגיבוי כולל את שתי הכספות (כל אחת נפתחת רק עם הסיסמה שלה).',
-dc_create:'צור כספת הסוואה',dc_same:'סיסמת ההסוואה חייבת להיות שונה מהסיסמה הראשית',
-dc_done:'כספת ההסוואה מוכנה וריקה. כדי למלא אותה: נעל, פתח עם סיסמת ההסוואה, והוסף כמה פריטים תמימים כדי שתיראה אמיתית.',
-dc_remove:'בטל את כספת ההסוואה',dc_remove_c:'הסיסמה של כספת ההסוואה תימחק, וכל מה שנשמר בתוכה יימחק לצמיתות. להמשיך?',dc_removed:'כספת ההסוואה בוטלה'
+
+
+
+
+
+
+b_checking:'בודק את כל הגיבוי לפני שמשנים משהו…',
+b_corrupt:'הגיבוי פגום: {n} רשומות בו לא נפתחות. כדי לא לאבד מידע, השחזור בוטל — הכספת הנוכחית לא שונתה. נסה קובץ גיבוי אחר.',
+b_summary:'הגיבוי נבדק ותקין: {i} פריטים ו-{f} קבצים, מתאריך {d}.',
+b_unknown:'{n} רשומות בגיבוי שייכות לכספת ההסוואה הישנה; הן יישמרו כמו שהן.',
+b_replace_cur:'השחזור יחליף את הכספת הנוכחית ({i} פריטים, {f} קבצים) בתוכן הגיבוי.',
+b_backup_first:'קודם גבה את הכספת הנוכחית',
+b_verify_fail:'השחזור נכתב אבל הבדיקה החוזרת לא תאמה. אל תמחק את קובץ הגיבוי — פתח את הכספת ובדוק.',
+b_restore_fail:'השחזור נכשל והבוטל לגמרי — הכספת הנוכחית לא שונתה.',
+keys_backup_now:'גיבויים ישנים נפתחים רק עם הסיסמה או קוד השחזור הקודמים. צור עכשיו גיבוי חדש שמתאים לפרטים החדשים, ושמור אותו במקום הקודם.',
+backup_keys:'החלפת סיסמה או קוד שחזור מאז הגיבוי האחרון. צור גיבוי חדש שמתאים להם.',
+kit_match:'הקוד מתאים לגיבויים שנוצרו מ-{d} והלאה. גיבויים ישנים יותר נפתחים רק עם הקוד הקודם.',
+scan_badquad:'הפינות לא יוצרות צורה תקינה. גרור אותן לארבע הפינות של המסמך.',
+exp_bad:'תוקף לא תקין — כתוב חודש (01–12) ושנה, למשל 08/27',
+pw_space:'יש רווח בהתחלה או בסוף',
+cal_title_card:'לחדש כרטיס אשראי — התוקף פג ב-{d}',
+cal_title_doc:'לחדש מסמך — התוקף פג ב-{d}',
+cal_title_lbl:'כותרת האירוע',
+cal_when_soon:'התוקף קרוב, לכן האירוע ייקבע למחר ({d})',
+dcl_t:'מחק את כספת ההסוואה הישנה',
+dcl_d:'הזן את סיסמת ההסוואה. יימחקו רק רשומות שנפתחות איתה — שום רשומה אחרת לא תיגע.',
+dcl_done:'נמחקו {i} פריטים ו-{f} קבצים של כספת ההסוואה',
+dcl_note:'כספת ההסוואה הוסרה מהאפליקציה כי אי אפשר להבטיח הסוואה אמיתית בדפדפן. אם יצרת כזו, אפשר למחוק את התוכן שלה כאן.',
+unreadable:'{n} רשומות לא נפתחות עם המפתח של הכספת (ייתכן שנפגמו). הן לא נמחקו. שמור את קבצי הגיבוי שלך ופנה לתמיכה.',
+reset_blocked:'הדפדפן לא השלים את המחיקה — כנראה האפליקציה פתוחה בלשונית או חלון נוסף. סגור אותם ונסה שוב.'
 },
 en:{
 app_sub:'My vault',skip_link:'Skip to content',
@@ -392,7 +418,7 @@ ob1_t:'Welcome to your vault',ob1_d:'One place for passwords, credit cards, code
 ob2_t:'Encrypted, and it stays with you',ob2_d:'Everything is encrypted with AES-256 before it is saved, and stays on this device only. Nothing is sent to a server.',
 ob3_t:'One master password',ob3_d:'It unlocks everything else, and there is no way for us to recover it. That is why you also get a recovery code — write it down on paper.',
 ob4_t:'Quick unlock',ob4_d:'After setup you can unlock with your fingerprint, a PIN or a screen pattern.',
-ob5_t:'Backups are your insurance',ob5_d:'If the phone is lost or browser data is cleared, only a backup file brings your data back. The backup itself is encrypted.',
+ob5_t:'Backups are your insurance',ob5_d:'If the phone is lost or browser data is cleared, only a backup file brings your data back. The backup content is encrypted.',
 ob_start:"Let's start",
 create_t:'Create a master password',create_d:'At least 10 characters. A short sentence you remember beats a complicated word.',
 new_pw:'New master password',pw_confirm:'Type it again',pw_mismatch:"Passwords don't match",pw_short:'At least 10 characters',
@@ -435,7 +461,7 @@ files_add:'Add files',files_camera:'Take photo',file_cat:'Category',file_name:'F
 fc_all:'All',fc_id:'IDs',fc_money:'Money',fc_home:'Home',fc_car:'Car',fc_health:'Health',fc_other:'Other',
 files_empty:'No files yet. Add photos, PDFs or any other file — they are encrypted before saving.',
 encrypting:'Encrypting {i} of {n}…',file_big:'"{n}" is larger than 100MB and was not added',files_added:'{n} files added, encrypted',
-orig_note:'The original file is still in your gallery or the folder you picked it from. If you want it only in the vault, delete it there yourself. (Photos taken from inside the vault are not saved to the gallery.)',
+orig_note:'The original file is still in your gallery or the folder you picked it from. If you want it only in the vault, delete it there yourself. Even for photos taken from inside the vault, some camera apps keep a copy in the gallery — worth checking.',
 file_share:'Share',file_download:'Download',file_open:'Open',download_warn:'A downloaded or shared file leaves the vault unencrypted.',file_fail:'Could not open the file',
 s_user:'User name',s_user_ph:'Name or nickname (shown on backups)',s_lang:'Language',s_look:'Appearance',s_theme:'Color theme',s_mode:'Display mode',mode_night:'🌙 Night',mode_day:'☀️ Day',
 th_gold:'Black & gold',th_silver:'Black & silver',th_copper:'Night & copper',th_jade:'Jade',th_ruby:'Burgundy',
@@ -449,9 +475,9 @@ bio_unsupported:'This device or browser does not support secure fingerprint unlo
 bio_note:'You will be asked for your fingerprint twice — once to create, once to verify. Your fingerprint never leaves the phone.',
 bio_ok:'Fingerprint unlock is on',bio_fail:'Fingerprint was cancelled or failed',bio_removed:'Fingerprint unlock turned off',
 s_change_pw:'Change master password',cur_pw:'Current password',pw_changed:'Master password updated',
-s_new_rec:'Create a new recovery code',new_rec_c:'A new recovery code will be created and the old one will stop working. Continue?',
+s_new_rec:'Create a new recovery code',new_rec_c:'A new recovery code will be created. On this device the previous code stops working, but backups you already made keep the previous code. Continue?',
 s_backup:'Backup & transfer',b_export:'Create encrypted backup',b_import:'Restore from backup',b_last:'Last backup: {d}',b_never:'No backup yet',
-b_hint:'The backup is encrypted and opens only with the master password (or recovery code) that was set when it was made. On a phone you can save it straight to Google Drive with "Share".',
+b_hint:'The vault content in the backup is encrypted and opens only with the master password (or recovery code) set when it was made. Only the user name, date and record counts are visible. On a phone you can save it straight to Google Drive with "Share".',
 b_ready:'Backup ready',b_share:'Share (Drive, email…)',b_save:'Save file',b_made:'Backup saved',
 b_pw_prompt:'Backup master password',b_pw_text:'Enter the master password that was set when this backup was made.',
 b_replace:'Restoring replaces everything in the vault with the backup contents. Continue?',b_restored:'Vault restored from backup',b_bad:'This file is not a valid VaultNest backup',
@@ -495,33 +521,56 @@ sh_code_is:'This is the code that opens the file:',sh_skipped:'{n} files were to
 sh_send_file:'Send the file',sh_copy_code:'Copy code',sh_code_prompt:'Opening code',sh_code_text:'Enter the code you got from the sender.',sh_wrong:'Wrong code',
 sh_confirm:'Save "{n}" ({f} attachments) in the vault?',sh_recv_t:'Receive a shared item',sh_recv_d:'Open an encrypted share file',sh_saved:'Item saved in the vault',sh_bad:'This is not a VaultNest share file',
 sh_need_unlock:'First create or unlock a vault, then open the share file',
-st_files_t:'{n} files shared to the vault',st_save:'Encrypt & save',orig_note_short:'The original is still in your gallery — delete it there if needed.',st_nothing:'No website address found in what was shared',
-st_found:'{n} items found for this site',st_no_match:'No password for this site yet',st_new_login:'Create a password for this site',
+
+
 kit_t:'Printable emergency kit',kit_d:'One page with the app address, your recovery code and instructions — keep it with your important papers at home, or give it to a family member you trust.',
-kit_new:'Create a new recovery code and print it',kit_blank:'Print with space to write the code by hand',kit_new_note:'A new code cancels the previous one. The printout is not saved anywhere.',
+kit_new:'Create a new recovery code and print it',kit_blank:'Print with space to write the code by hand',kit_new_note:'A new code replaces the previous one in the vault on this device. Backups you already made still open only with the previous code — so you will be asked to create a new backup right after.',
 kit_addr:'App address',kit_code_note:'This code opens the vault instead of the master password. Anyone holding this page and the backup file can open it.',kit_backup_where:'Where the backup file is kept',
 kit_steps_t:'How to restore',kit_s1:'Open the app address in Chrome.',kit_s2:'On the first screen tap "I already have a backup — restore it" and pick the backup file.',
 kit_s3:'Enter the master password — or the recovery code from this page.',kit_s4:'If you opened it with the recovery code: choose a new master password in Settings.',kit_warn:'Keep this page somewhere safe, not next to the phone.',
-kit_after:'If printing did not work — this is the new code. The previous code no longer works.',
-cal_t:'Calendar reminder',cal_title:'{n}: expires on {d}',cal_details:'Reminder from VaultNest to renew before it expires.',cal_when:'The event will be set for {d} (one month before)',
-cal_privacy:'Only the title and date go to the calendar — no numbers or secret details.',cal_google:'Add to Google Calendar',cal_ics:'Calendar file (for any other calendar)',
+kit_after:'If printing did not work — this is the new code. On this device the previous code no longer works; older backups still need the previous code.',
+cal_t:'Calendar reminder',cal_title:'{n}: expires on {d}',cal_details:'Reminder from VaultNest to renew before it expires.',cal_when:'The event will be set for {d}, 30 days before expiry',
+cal_privacy:'Whatever is in the title goes to Google or to the calendar file. Do not put a document number or secret detail in it.',cal_google:'Add to Google Calendar',cal_ics:'Calendar file (for any other calendar)',
 wifi_qr:'QR to connect',wifi_qr_d:'A guest scans it with the camera and joins the network. Whoever scans it gets the password.',
 hist_t:'Password history',hist_d:'Previous values replaced in this item (up to 15).',hist_clear:'Clear history',hist_clear_c:'Delete all previous values of this item?',
 gen_chars:'Characters',gen_words:'Words',gen_wcount:'Number of words: {n}',gen_wlang:'Word language',gen_sep:'Separator',gen_space:'Space',gen_cap:'Capitalize each word',gen_num:'Add a digit',
 gen_words_note:'A passphrase of random words is easier to type and remember, and still strong. Hebrew words only suit sites that accept Hebrew in passwords.',
 gen_default_note:'These settings are also used by the "Generate" button in the edit window.',
-dc_t:'Decoy vault',dc_short:'A second password that opens a separate, harmless vault — in case you are forced to open it.',
-dc_d:'The decoy password opens a separate vault. Whoever enters with it does not see your real items, or that another vault exists. Important: the decoy vault has no quick unlock, recovery code or delete option, and a backup includes both vaults (each opens only with its own password).',
-dc_create:'Create a decoy vault',dc_same:'The decoy password must differ from the master password',
-dc_done:'The decoy vault is ready and empty. To fill it: lock, unlock with the decoy password, and add a few harmless items so it looks real.',
-dc_remove:'Remove the decoy vault',dc_remove_c:'The decoy password will be deleted, along with everything stored in the decoy vault. Continue?',dc_removed:'Decoy vault removed'
-}};
+
+
+
+
+
+b_checking:'Checking the whole backup before changing anything…',
+b_corrupt:'The backup is damaged: {n} records in it do not open. To avoid losing data, the restore was cancelled — your current vault was not changed. Try another backup file.',
+b_summary:'The backup checked out: {i} items and {f} files, from {d}.',
+b_unknown:'{n} records in the backup belong to the old decoy vault; they will be kept as they are.',
+b_replace_cur:'Restoring will replace the current vault ({i} items, {f} files) with the backup contents.',
+b_backup_first:'Back up the current vault first',
+b_verify_fail:'The restore was written but the read-back check did not match. Do not delete the backup file — open the vault and check.',
+b_restore_fail:'The restore failed and was fully cancelled — your current vault was not changed.',
+keys_backup_now:'Old backups open only with the previous password or recovery code. Create a new backup that matches the new details now, and keep it where you kept the old one.',
+backup_keys:'You changed the password or recovery code since the last backup. Create a new backup that matches them.',
+kit_match:'This code matches backups created from {d} on. Older backups open only with the previous code.',
+scan_badquad:'The corners do not form a valid shape. Drag them to the four corners of the document.',
+exp_bad:'Invalid expiry — enter month (01–12) and year, e.g. 08/27',
+pw_space:'Has a space at the start or end',
+cal_title_card:'Renew credit card — expires on {d}',
+cal_title_doc:'Renew document — expires on {d}',
+cal_title_lbl:'Event title',
+cal_when_soon:'Expiry is close, so the event will be set for tomorrow ({d})',
+dcl_t:'Delete the old decoy vault',
+dcl_d:'Enter the decoy password. Only records that open with it will be deleted — no other record is touched.',
+dcl_done:'Deleted {i} items and {f} files of the decoy vault',
+dcl_note:'The decoy vault was removed from the app because real hiding cannot be guaranteed in a browser. If you created one, you can delete its contents here.',
+unreadable:'{n} records do not open with the vault key (they may be damaged). They were not deleted. Keep your backup files and contact support.',
+reset_blocked:'The browser did not finish deleting — the app is probably open in another tab or window. Close it and try again.'}};
 let CUR='he';
 function T(k,v){const L=LANG[CUR]||LANG.en;let s=L[k]!=null?L[k]:(LANG.en[k]!=null?LANG.en[k]:k);if(v)s=s.replace(/\{(\w+)\}/g,(m,n)=>v[n]!=null?v[n]:m);return s;}
 /* passphrase word lists (own, simple common words) */
 const WORDS={en:'able acid acorn actor adapt admit adult agent agree ahead aim air alarm album alert alien alley alpha amber amigo anchor angle ankle apple april apron arch arena argue arm army arrow art aside atlas atom attic audio aunt autumn avoid awake award axis baby bacon badge bagel baker bald ball bamboo banana band bank barn barrel basil basket bath beach beam bean bear beard beast bed bee beef bell belt bench berry bike bird bishop black blade blank blast blend blink block bloom blue board boat body bold bolt bonus book boot boss bottle bounce bowl box brain brave bread brick bride brief brisk broom brown brush bubble bucket budget buddy bulb bunny burger bus butter button buzz cabin cable cactus cake calm camel camera camp canal candy canoe canvas canyon cape card cargo carpet carrot cart castle cat cave cedar cello chain chair chalk champ charm cheek cheese cherry chess chief chip choir cider cigar circle city civic clam clap claw clay clean clerk cliff climb clock cloud clown club coach coast cobra cocoa coin comet coral corn cotton couch cousin crab craft crane crate crisp crow crown cube cup curry curve cycle daisy dance dawn deer delta denim depth desert desk dial diary diesel dime diner dingo disco dish diver dizzy dock doll dolphin donkey door dough dove dragon drama dream dress drift drill drum duck dune dust eagle earth easel echo edge eel eight elbow elder elm ember empty engine enjoy epic equal error essay event exact exit extra fable fabric fairy faith falcon fancy farm fawn feast feather fence ferry fever fiber fiddle field fifty film final finch fire fish flag flame flash flint float flock flour flute foam focus fog folk forest fork fort fossil fox frame fresh frog frost fruit fudge fuel fuzzy gadget galaxy game garden garlic gate gecko gem genie ghost giant gift ginger giraffe glass globe glove glow goat gold golf goose gorilla grain grape grass gravy green grid grill grin group guitar gull habit hammer hand happy harbor harp hat hawk hazel heart hedge helmet hero hill hippo hobby honey hood hook horse hotel house humor hunter husky ice icon idea igloo image index ink input iris iron island ivory jacket jaguar jam jar jazz jeans jelly jet jewel jog joke judge juice jumbo jungle kayak kettle key kid king kite kitten kiwi knee knife koala label ladder lake lamp lane laser latte lava lawn layer leaf lemon lens lever lily lime linen lion liquid lobby lock lodge logic lotus lucky lunar lunch lynx magic magnet mango maple marble market mask meadow medal melon memo mercy metal meteor mint mirror mist mixer model monk moose motor mouse mud mug muffin museum music nacho napkin navy nest net night ninja noble noodle north novel nut oak oasis ocean olive omega onion opera orange orbit orchid otter oven owl oyster paddle page palm panda paper parade park parrot pasta patch peach peanut pearl pebble pedal pencil pepper piano pickle pig pillow pilot pine pink pizza planet plum poem polar pony pool poppy potato pretty prism pulse pumpkin puppy puzzle quail quartz queen quest quick quiet quilt quiz rabbit radar radio rain ranch raven razor recipe reef relax rhino ribbon rice ridge river robin robot rocket rodeo roof rose royal ruby rugby salad salmon salsa sand satin sauce scarf school scout sea seal seed shark sheep shelf shell ship shoe silk silver singer siren skate sketch ski sky sleep slide smile snail snake snow soap sock sofa solar song soup spark spice spider spoon spring squid stamp star steam stone storm straw sugar summer sun surf swan sweet swing table taco tango tea teddy tent tiger toast tomato topaz torch tower toy tractor train tree trick tulip tuna tunnel turtle twin umbrella uncle unit urban valley vanilla velvet violin visit vivid volcano wafer wagon walnut walrus water wave wheel whale window winter wizard wolf wood wool yacht yak yard yellow yoga zebra zero zigzag zone'.split(' '),he:'אבן אגם אגוז אדמה אוהל אוזן אוצר אורז אות אחות איש אלון אמא אננס אסם אפרסק ארגז ארון אריה ארמון אש באר בגד בובה בוקר בטן ביצה בית בלון במה בננה בקבוק ברווז ברז ברק גבינה גבעה גדר גוזל גזר גחלת גינה גיטרה גלגל גמל גן גשם גשר דבורה דבש דג דגל דוב דודה דלת דף דרך הר הרים ורד זאב זברה זהב זית זמר זנב זרע חבל חבר חג חול חולצה חום חוף חורף חותם חזיר חיוך חלב חלון חלום חמור חסה חתול טווס טוסט טיל טלה טנא טרקטור יד ילד ים ינשוף יער ירח ירוק כדור כוכב כוס כותרת כיסא כלב כנף כפית כפר כרוב כתר לב לביא לחם לילה לימון לוח לטאה מגדל מדבר מזלג מחברת מטוס מטרייה מים מכונית מלון מלך מנגו מנורה מסגרת מעיל מפה מפתח מראה מרק משחק מתנה נבל נהר נוצה נחל נחש נמל נמר נסיך נעל נר סבא סבון סוס סוכר סולם סוסון סיר סלע סנאי ספר ספינה עגבניה עגלה עוגה עוף עט עין עיר עכבר ענן עפרון עץ פגז פונפון פיל פינה פירה פנס פסל פעמון פרה פרח פרפר צב צבע צדף צלחת צנון צפרדע קוף קיץ קיר קמח קן קנה קסם קערה קפה קקטוס קרח קשת ראש רגל רדיו רוח רחוב ריבה רימון רכבת רעם שבלול שדה שוקו שולחן שועל שורש שחף שטיח שיר שלג שמיים שמש שן שעון שפן שקד שקית שרוך תבלין תוף תות תמר תנור תפוח תפוז תרנגול תרמיל'.split(' ')};
 /* ================= constants ================= */
-const APP_VERSION='1.1.0';
+const APP_VERSION='1.1.1';
 const DB_NAME='appnest_vault';
 const LSP='vaultnest_';
 const KDF_ITER=600000, QUICK_ITER=310000, REC_ITER=150000;
@@ -566,13 +615,14 @@ open(){if(this.db)return Promise.resolve(this.db);return new Promise((res,rej)=>
  r.onupgradeneeded=()=>{const d=r.result;STORES.forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s);});};
  r.onsuccess=()=>{this.db=r.result;this.db.onversionchange=()=>{this.db.close();this.db=null;};res(this.db);};
  r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});},
-async run(stores,mode,fn){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction(stores,mode);let out;const r=fn(t);if(r&&'onsuccess' in r)r.onsuccess=()=>{out=r.result;};t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error||new Error('abort'));});},
+// fn must only queue requests; any exception aborts the whole transaction explicitly (nothing half-written)
+async run(stores,mode,fn){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction(stores,mode);let out,r;try{r=fn(t);}catch(e){try{t.abort();}catch(_){}rej(e);return;}if(r&&'onsuccess' in r)r.onsuccess=()=>{out=r.result;};t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error||new Error('abort'));});},
 get(s,k){return this.run(s,'readonly',t=>t.objectStore(s).get(k));},
 put(s,k,v){return this.run(s,'readwrite',t=>{t.objectStore(s).put(v,k);});},
 del(s,k){return this.run(s,'readwrite',t=>{t.objectStore(s).delete(k);});},
 all(s){return this.run(s,'readonly',t=>t.objectStore(s).getAll());},
 count(s){return this.run(s,'readonly',t=>t.objectStore(s).count());},
-async wipe(){if(this.db){this.db.close();this.db=null;}await new Promise(r=>{const q=indexedDB.deleteDatabase(DB_NAME);q.onsuccess=q.onerror=q.onblocked=()=>r();});}};
+async wipe(){if(this.db){this.db.close();this.db=null;}return new Promise(r=>{const q=indexedDB.deleteDatabase(DB_NAME);q.onsuccess=()=>r('ok');q.onerror=()=>r('error');q.onblocked=()=>setTimeout(()=>r('blocked'),4000);});}};
 
 /* ================= crypto primitives ================= */
 async function kdf(secret,salt,iter){const base=await crypto.subtle.importKey('raw',te.encode(norm(secret)),'PBKDF2',false,['deriveKey']);
@@ -587,7 +637,7 @@ function genRecovery(){const b=rand(24);let s='';for(let i=0;i<24;i++){s+=REC_AB
 const normRec=c=>String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 
 /* ================= state ================= */
-const S={dek:null,dekRaw:null,items:[],files:[],unlocked:false,stack:[],urls:[],thumbs:{},hold:0,decoy:false,decoyExists:false,tick:0,pendingShare:false};
+const S={dek:null,dekRaw:null,items:[],files:[],unlocked:false,stack:[],urls:[],thumbs:{},hold:0,decoy:false,decoyExists:false,tick:0,unreadable:0,sid:0};
 
 /* ================= vault / keys ================= */
 async function createVault(pw){
@@ -599,14 +649,18 @@ async function createVault(pw){
 async function unwrapPw(pw){const m=await DB.get('meta','vault');const k=await kdf(pw,m.kdf.salt,m.kdf.iter);return new Uint8Array(await dec(k,m.pw.iv,m.pw.ct));}
 async function unwrapRec(code){const m=await DB.get('meta','vault');const k=await kdf(normRec(code),m.rec.salt,m.rec.iter);return new Uint8Array(await dec(k,m.rec.iv,m.rec.ct));}
 async function setMasterPw(raw,pw){const m=await DB.get('meta','vault');const salt=rand(16);const w=await enc(await kdf(pw,salt,KDF_ITER),raw);
- m.kdf={iter:KDF_ITER,salt};m.pw={iv:w.iv,ct:w.ct};await DB.put('meta','vault',m);}
+ m.kdf={iter:KDF_ITER,salt};m.pw={iv:w.iv,ct:w.ct};await DB.put('meta','vault',m);LS.set('keysAt',Date.now());}
 async function unwrapDecoy(pw){const d=await DB.get('meta','decoy');if(!d)throw Object.assign(new Error('nodecoy'),{name:'OperationError'});const k=await kdf(pw,d.kdf.salt,d.kdf.iter);return new Uint8Array(await dec(k,d.pw.iv,d.pw.ct));}
 async function setDecoyPw(raw,pw){const salt=rand(16);const w=await enc(await kdf(pw,salt,KDF_ITER),raw);await DB.put('meta','decoy',{kdf:{iter:KDF_ITER,salt},pw:{iv:w.iv,ct:w.ct}});}
-async function removeDecoy(){await DB.del('meta','decoy');
- for(const r of await DB.all('items')){try{await dec(S.dek,r.iv,r.ct);}catch(e){await DB.del('items',r.id);}}
- for(const r of await DB.all('files')){try{await dec(S.dek,r.miv,r.mct);}catch(e){await DB.del('files',r.id);await DB.del('blobs',r.id);}}S.decoyExists=false;}
+// v1.1.1: the decoy vault was removed. Legacy decoy data is removed ONLY by positive identification:
+// a record is deleted only if it actually decrypts with the decoy key. A record that fails to decrypt is never deleted.
+async function removeDecoyWith(pw){const raw=await unwrapDecoy(pw);const k=await importDEK(raw);raw.fill(0);const di=[],df=[];
+ for(const r of await DB.all('items')){try{await dec(k,r.iv,r.ct);di.push(r.id);}catch(e){}}
+ for(const r of await DB.all('files')){try{await dec(k,r.miv,r.mct);df.push(r.id);}catch(e){}}
+ await DB.run(['meta','items','files','blobs'],'readwrite',t=>{di.forEach(id=>t.objectStore('items').delete(id));df.forEach(id=>{t.objectStore('files').delete(id);t.objectStore('blobs').delete(id);});t.objectStore('meta').delete('decoy');});
+ S.decoyExists=false;return {items:di.length,files:df.length};}
 async function newRecovery(){const m=await DB.get('meta','vault');const code=genRecovery(),rsalt=rand(16);
- const rw=await enc(await kdf(normRec(code),rsalt,REC_ITER),S.dekRaw);m.rec={iter:REC_ITER,salt:rsalt,iv:rw.iv,ct:rw.ct};await DB.put('meta','vault',m);return code;}
+ const rw=await enc(await kdf(normRec(code),rsalt,REC_ITER),S.dekRaw);m.rec={iter:REC_ITER,salt:rsalt,iv:rw.iv,ct:rw.ct};await DB.put('meta','vault',m);LS.set('keysAt',Date.now());return code;}
 // device key: non-extractable, stored in IndexedDB; wraps quick-unlock blob so PIN/pattern alone is useless off-device
 async function devKey(){let k=await DB.get('meta','devkey');if(!k){k=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);await DB.put('meta','devkey',k);}return k;}
 async function setQuick(kind,secret){const salt=rand(16);const inner=await enc(await kdf(kind+':'+secret,salt,QUICK_ITER),S.dekRaw);
@@ -631,17 +685,20 @@ async function setupBio(){const cred=await navigator.credentials.create({publicK
 async function unlockBio(){const b=await DB.get('meta','bio');return new Uint8Array(await dec(await prfKey(await bioEval(b.credId,b.psalt)),b.iv,b.ct));}
 
 /* ================= data ================= */
-async function loadAll(){S.items=[];S.files=[];S.decoyExists=!!(await DB.get('meta','decoy'));
- // records encrypted with the other vault's key (decoy/real) simply don't decrypt and are skipped
- for(const r of await DB.all('items')){try{S.items.push(await decJ(r.iv,r.ct));}catch(e){if(!S.decoyExists)logErr('item decrypt');}}
- for(const r of await DB.all('files')){try{const m=await decJ(r.miv,r.mct);m.id=r.id;m.hasThumb=!!r.tct;S.files.push(m);}catch(e){if(!S.decoyExists)logErr('file decrypt');}}
+async function loadAll(){S.items=[];S.files=[];S.unreadable=0;S.decoyExists=!!(await DB.get('meta','decoy'));
+ // a record that does not decrypt is counted and LEFT UNTOUCHED — never deleted, never overwritten
+ for(const r of await DB.all('items')){try{S.items.push(await decJ(r.iv,r.ct));}catch(e){S.unreadable++;}}
+ for(const r of await DB.all('files')){try{const m=await decJ(r.miv,r.mct);m.id=r.id;m.hasThumb=!!r.tct;S.files.push(m);}catch(e){S.unreadable++;}}
+ if(S.unreadable&&!S.decoyExists)logErr('unreadable records: '+S.unreadable);
  await purgeTrash();}
 async function saveItem(it){it.updated=Date.now();const {iv,ct}=await encJ(it);await DB.put('items',it.id,{id:it.id,iv,ct});
  const i=S.items.findIndex(x=>x.id===it.id);if(i>=0)S.items[i]=it;else S.items.push(it);}
 async function saveFileMeta(m){const clean={name:m.name,type:m.type,size:m.size,cat:m.cat,created:m.created,deletedAt:m.deletedAt||0,itemId:m.itemId||''};
  const rec=await DB.get('files',m.id);const e=await encJ(clean);rec.miv=e.iv;rec.mct=e.ct;await DB.put('files',m.id,rec);}
-async function killItem(id){for(const f of S.files.filter(x=>x.itemId===id))await killFile(f.id);await DB.del('items',id);S.items=S.items.filter(x=>x.id!==id);}
-async function killFile(id){await DB.del('blobs',id);await DB.del('files',id);S.files=S.files.filter(x=>x.id!==id);if(S.thumbs[id]){URL.revokeObjectURL(S.thumbs[id]);delete S.thumbs[id];}}
+async function killItem(id){const att=S.files.filter(x=>x.itemId===id).map(x=>x.id);
+ await DB.run(['items','files','blobs'],'readwrite',t=>{t.objectStore('items').delete(id);att.forEach(f=>{t.objectStore('files').delete(f);t.objectStore('blobs').delete(f);});});
+ S.items=S.items.filter(x=>x.id!==id);att.forEach(f=>{S.files=S.files.filter(x=>x.id!==f);if(S.thumbs[f]){URL.revokeObjectURL(S.thumbs[f]);delete S.thumbs[f];}});}
+async function killFile(id){await DB.run(['files','blobs'],'readwrite',t=>{t.objectStore('files').delete(id);t.objectStore('blobs').delete(id);});S.files=S.files.filter(x=>x.id!==id);if(S.thumbs[id]){URL.revokeObjectURL(S.thumbs[id]);delete S.thumbs[id];}}
 async function purgeTrash(){const lim=Date.now()-30*864e5;
  for(const it of S.items.filter(x=>x.deletedAt&&x.deletedAt<lim))await killItem(it.id);
  for(const f of S.files.filter(x=>x.deletedAt&&x.deletedAt<lim))await killFile(f.id);}
@@ -657,8 +714,8 @@ async function makeThumb(file){try{const bmp=await createImageBitmap(file);const
 async function addOneFile(f,cat,itemId){const buf=await f.arrayBuffer();const e=await enc(S.dek,buf);
  const th=/^image\//.test(f.type)?await makeThumb(f):null;const te2=th?await enc(S.dek,th):null;
  const id=uid();const meta={name:f.name||('photo-'+ymd()+'.jpg'),type:f.type||'application/octet-stream',size:f.size,cat,created:Date.now(),deletedAt:0,itemId:itemId||''};
- const m=await encJ(meta);await DB.put('blobs',id,{iv:e.iv,ct:e.ct});
- await DB.put('files',id,{id,miv:m.iv,mct:m.ct,tiv:te2?te2.iv:null,tct:te2?te2.ct:null});
+ const m=await encJ(meta);// one transaction: content + metadata are saved together or not at all
+ await DB.run(['blobs','files'],'readwrite',t=>{t.objectStore('blobs').put({iv:e.iv,ct:e.ct},id);t.objectStore('files').put({id,miv:m.iv,mct:m.ct,tiv:te2?te2.iv:null,tct:te2?te2.ct:null},id);});
  meta.id=id;meta.hasThumb=!!te2;S.files.push(meta);return meta;}
 async function thumbURL(id){if(S.thumbs[id])return S.thumbs[id];const r=await DB.get('files',id);if(!r||!r.tct)return null;
  const u=URL.createObjectURL(new Blob([await dec(S.dek,r.tiv,r.tct)],{type:'image/jpeg'}));S.thumbs[id]=u;return u;}
@@ -679,13 +736,31 @@ function parseBackup(text){let d;try{d=JSON.parse(text);}catch(e){return null;}
  if(!d||d.app!=='VaultNest'||!d.vault||!d.vault.pw||!Array.isArray(d.items))return null;return d;}
 async function unwrapBackup(d,secret,useRec){const v=useRec?d.vault.rec:d.vault.pw;const kd=useRec?{salt:d.vault.rec.salt,iter:d.vault.rec.iter}:d.vault.kdf;
  const k=await kdf(useRec?normRec(secret):secret,unb64(kd.salt),kd.iter);return new Uint8Array(await dec(k,unb64(v.iv),unb64(v.ct)));}
-async function restoreBackup(d){const meta={v:1,created:Date.now(),kdf:{iter:d.vault.kdf.iter,salt:unb64(d.vault.kdf.salt)},pw:{iv:unb64(d.vault.pw.iv),ct:unb64(d.vault.pw.ct)},
-  rec:{iter:d.vault.rec.iter,salt:unb64(d.vault.rec.salt),iv:unb64(d.vault.rec.iv),ct:unb64(d.vault.rec.ct)}};
- await DB.run(STORES,'readwrite',t=>{const M=t.objectStore('meta'),I=t.objectStore('items'),F=t.objectStore('files'),B=t.objectStore('blobs');
-  M.put(meta,'vault');M.delete('quick');M.delete('bio');
-  if(d.decoy)M.put({kdf:{iter:d.decoy.kdf.iter,salt:unb64(d.decoy.kdf.salt)},pw:{iv:unb64(d.decoy.pw.iv),ct:unb64(d.decoy.pw.ct)}},'decoy');else M.delete('decoy');I.clear();F.clear();B.clear();
-  d.items.forEach(r=>I.put({id:r.id,iv:unb64(r.iv),ct:unb64(r.ct)},r.id));
-  (d.files||[]).forEach(r=>{F.put({id:r.id,miv:unb64(r.miv),mct:unb64(r.mct),tiv:r.tiv?unb64(r.tiv):null,tct:r.tct?unb64(r.tct):null},r.id);B.put({iv:unb64(r.iv),ct:unb64(r.ct)},r.id);});});}
+// ---- safe restore: 1) decode + decrypt EVERYTHING, 2) only then replace in one transaction, 3) verify by reading back
+const B64RE=/^[A-Za-z0-9+/]*={0,2}$/;
+function ub(v,len){if(typeof v!=='string'||!B64RE.test(v))throw Object.assign(new Error('format'),{code:'format'});const u=unb64(v);if(len&&u.length!==len)throw Object.assign(new Error('format'),{code:'format'});return u;}
+function ckIter(n){if(!Number.isInteger(n)||n<100000||n>5000000)throw Object.assign(new Error('format'),{code:'format'});return n;}
+async function prepareRestore(d,raw,onProg){const key=await importDEK(raw);const V=d.vault;
+ const meta={v:1,created:Date.now(),kdf:{iter:ckIter(V.kdf.iter),salt:ub(V.kdf.salt,16)},pw:{iv:ub(V.pw.iv,12),ct:ub(V.pw.ct)},rec:{iter:ckIter(V.rec.iter),salt:ub(V.rec.salt,16),iv:ub(V.rec.iv,12),ct:ub(V.rec.ct)}};
+ const decoy=d.decoy?{kdf:{iter:ckIter(d.decoy.kdf.iter),salt:ub(d.decoy.kdf.salt,16)},pw:{iv:ub(d.decoy.pw.iv,12),ct:ub(d.decoy.pw.ct)}}:null;
+ const files=Array.isArray(d.files)?d.files:[];if(d.items.length>50000||files.length>20000)throw Object.assign(new Error('format'),{code:'format'});
+ const ids=new Set(),items=[],fl=[];let bad=0,unknown=0,nI=0,nF=0,done=0;const total=d.items.length+files.length;
+ const verdict=ok=>{if(!ok){if(decoy)unknown++;else bad++;}};
+ for(const r of d.items){if(!r||typeof r.id!=='string'||!r.id||ids.has('i'+r.id))throw Object.assign(new Error('format'),{code:'format'});ids.add('i'+r.id);
+  const rec={id:r.id,iv:ub(r.iv,12),ct:ub(r.ct)};let ok=true;
+  try{const o=JSON.parse(td.decode(await dec(key,rec.iv,rec.ct)));if(!o||o.id!==r.id||typeof o.type!=='string')throw 0;if(o.type[0]!=='_')nI++;}catch(e){ok=false;}
+  verdict(ok);items.push(rec);if(onProg&&++done%25===0)onProg(done,total);}
+ for(const r of files){if(!r||typeof r.id!=='string'||!r.id||ids.has('f'+r.id))throw Object.assign(new Error('format'),{code:'format'});ids.add('f'+r.id);
+  const rec={id:r.id,miv:ub(r.miv,12),mct:ub(r.mct),tiv:r.tiv?ub(r.tiv,12):null,tct:r.tct?ub(r.tct):null};const blob={iv:ub(r.iv,12),ct:ub(r.ct)};let ok=true;
+  try{await dec(key,rec.miv,rec.mct);if(rec.tct)await dec(key,rec.tiv,rec.tct);await dec(key,blob.iv,blob.ct);nF++;}catch(e){ok=false;}
+  verdict(ok);fl.push([rec,blob]);if(onProg&&++done%5===0)onProg(done,total);}
+ if(bad)throw Object.assign(new Error('corrupt'),{code:'corrupt',bad});
+ return {meta,decoy,items,files:fl,stats:{items:nI,files:nF,unknown,created:d.created||''}};}
+async function commitRestore(P){await DB.run(STORES,'readwrite',t=>{const M=t.objectStore('meta'),I=t.objectStore('items'),F=t.objectStore('files'),B=t.objectStore('blobs');
+  M.put(P.meta,'vault');M.delete('quick');M.delete('bio');if(P.decoy)M.put(P.decoy,'decoy');else M.delete('decoy');I.clear();F.clear();B.clear();
+  P.items.forEach(r=>I.put(r,r.id));P.files.forEach(([r,b])=>{F.put(r,r.id);B.put(b,r.id);});});
+ const [ni,nf,nb]=[await DB.count('items'),await DB.count('files'),await DB.count('blobs')];
+ if(ni!==P.items.length||nf!==P.files.length||nb!==P.files.length)throw Object.assign(new Error('verify'),{code:'verify'});}
 
 /* ================= CSV import / export ================= */
 function parseCSV(text){text=text.replace(/^\uFEFF/,'');const rows=[];let row=[],f='',q=false;
@@ -697,7 +772,7 @@ function csvToLogins(text){const rows=parseCSV(text);if(rows.length<2)return [];
  const col=(...names)=>{for(const n of names){const i=h.indexOf(n);if(i>=0)return i;}return -1;};
  const cT=col('name','title'),cU=col('url','login_uri','uri','website'),cN=col('username','login_username','login','email'),cP=col('password','login_password'),cX=col('note','notes','extra','comments');
  if(cP<0&&cN<0)return [];const out=[];
- for(const r of rows.slice(1)){const g=i=>i>=0&&r[i]!=null?r[i].trim():'';const pw=g(cP),un=g(cN),url=g(cU);if(!pw&&!un)continue;
+ for(const r of rows.slice(1)){const g=i=>i>=0&&r[i]!=null?r[i].trim():'';const pw=cP>=0&&r[cP]!=null?r[cP]:'';/* passwords are kept exactly — never trimmed */const un=g(cN),url=g(cU);if(!pw&&!un)continue;
   out.push({title:g(cT)||hostOf(url)||un||'—',url,username:un,password:pw,notes:g(cX)});}
  return out;}
 async function importLogins(list){let n=0,s=0;const key=(u,n2,p)=>[hostOf(u),n2,p].join('\u0001');
@@ -730,7 +805,8 @@ function strength(pw){if(!pw)return {s:0,bits:0};let pool=0;
 const STR_COL=['var(--bad)','var(--bad)','var(--warn)','var(--ok)','var(--ok)'];
 async function pwnedCount(pw){const h=await crypto.subtle.digest('SHA-1',te.encode(pw));
  const hex=Array.from(new Uint8Array(h),b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
- const r=await fetch('https://api.pwnedpasswords.com/range/'+hex.slice(0,5),{referrerPolicy:'no-referrer',cache:'no-store',credentials:'omit'});
+ const ac=new AbortController();const to=setTimeout(()=>ac.abort(),12000);let r;
+ try{r=await fetch('https://api.pwnedpasswords.com/range/'+hex.slice(0,5),{referrerPolicy:'no-referrer',cache:'no-store',credentials:'omit',signal:ac.signal});}finally{clearTimeout(to);}
  if(!r.ok)throw new Error('http '+r.status);const suf=hex.slice(5);
  for(const line of (await r.text()).split('\n')){const [s,c]=line.trim().split(':');if(s===suf)return parseInt(c,10)||0;}return 0;}
 async function hibpConsent(){if(LS.get('hibpOk',false))return true;const ok=await confirmDlg(T('breach_consent'),{title:T('breach_t')});if(ok)LS.set('hibpOk',true);return ok;}
@@ -758,6 +834,7 @@ function modal(html,o={}){return new Promise(res=>{const w=document.createElemen
  const af=sh.querySelector('[autofocus]')||sh.querySelector('button');if(af)setTimeout(()=>{try{af.focus({preventScroll:true});}catch(e){}},60);});}
 function confirmDlg(text,o={}){return modal(`${o.title?`<h3 class="mh">${esc(o.title)}</h3>`:''}<p class="mtext">${esc(text)}</p><div class="mact"><button class="btn" data-v="0">${esc(o.no||T('cancel'))}</button><button class="btn pri ${o.danger?'danger':''}" data-v="1">${esc(o.ok||T('confirm'))}</button></div>`,
  {onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v==='1'))});}
+function alertDlg(text,title){return modal(`${title?`<h3 class="mh">${esc(title)}</h3>`:''}<p class="mtext">${esc(text)}</p><div class="mact"><button class="btn pri" data-v>${T('close')}</button></div>`,{onOpen:(s,close)=>{$('[data-v]',s).onclick=()=>close(true);}});}
 function promptDlg(title,o={}){const isPw=o.type==='password';
  return modal(`<h3 class="mh">${esc(title)}</h3>${o.text?`<p class="mtext">${esc(o.text)}</p>`:''}
  <div class="${isPw?'pwbox':''}"><input class="inp ${o.mono?'mono':''}" id="pd" type="${o.type||'text'}" autocomplete="off" autocapitalize="off" spellcheck="false" autofocus placeholder="${esc(o.ph||'')}" value="${esc(o.value||'')}" ${o.ltr||isPw?'dir="ltr"':''}>${isPw?`<button type="button" class="eye" data-eye="pd" aria-label="${T('show')}">👁</button>`:''}</div>
@@ -850,8 +927,7 @@ async function showUnlock(msg){const L=$('#lock');L._redraw=()=>showUnlock();con
  $('#uf').onsubmit=async e=>{e.preventDefault();const pw=$('#upw').value;if(!pw)return;const until=LS.get('pwuntil',0);
   if(Date.now()<until){err.textContent=T('wait_s',{s:Math.ceil((until-Date.now())/1000)});return;}
   btn.disabled=true;btn.textContent=T('unlocking');
-  try{let raw,decoy=false;try{raw=await unwrapPw(pw);}catch(e1){if(e1&&e1.name==='OperationError'&&(await DB.get('meta','decoy'))){raw=await unwrapDecoy(pw);decoy=true;}else throw e1;}
-   LS.set('pwfails',0);LS.set('pwuntil',0);await afterUnlock(raw,false,decoy);}
+  try{const raw=await unwrapPw(pw);LS.set('pwfails',0);LS.set('pwuntil',0);await afterUnlock(raw);}
   catch(x){btn.disabled=false;btn.textContent=T('unlock');if(x&&x.name!=='OperationError'){err.textContent=T('err_generic',{e:x.message});logErr(x.message);return;}
    const n=LS.get('pwfails',0)+1;LS.set('pwfails',n);if(n>=5)LS.set('pwuntil',Date.now()+Math.min(30000*2**(n-5),900000));
    err.textContent=T('wrong_pw');shakeDial();$('#upw').select();}};
@@ -874,12 +950,12 @@ function showNewPw(raw){const L=$('#lock');L._redraw=null;
  bindMeter($('#np1'),$('#npm'),$('#npml'));
  $('#nbtn').onclick=async()=>{const pw=await readPwFields(L,'np',$('#nerr'));if(!pw)return;$('#nbtn').disabled=true;
   await setMasterPw(raw,pw);LS.set('pwfails',0);LS.set('pwuntil',0);toast(T('pw_changed'));await afterUnlock(raw);};}
-async function afterUnlock(raw,fresh,decoy){S.dekRaw=raw;S.dek=await importDEK(raw);S.decoy=!!decoy;await loadAll();S.unlocked=true;S.stack=[];
+async function afterUnlock(raw,fresh){S.dekRaw=raw;S.dek=await importDEK(raw);S.decoy=false;S.sid++;await loadAll();S.unlocked=true;S.stack=[];
  const d=$('#lock .dial');if(d)d.classList.add('open');const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
  $('#view').removeAttribute('aria-hidden');go('home',{},true);armIdle();persistStorage();
  setTimeout(()=>{const L=$('#lock');L.classList.add('gone');setTimeout(()=>{if(S.unlocked){L.hidden=true;L.innerHTML='';}},reduce?0:350);},reduce?0:600);
- if(fresh)setTimeout(offerQuick,reduce?50:900);else if(S.pendingShare)setTimeout(handleShare,reduce?50:900);}
-function lock(silent){if(!S.unlocked)return;clearInterval(S.tick);S.tick=0;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;S.items=[];S.files=[];S.unlocked=false;S.decoy=false;
+ if(fresh)setTimeout(offerQuick,reduce?50:900);}
+function lock(silent){if(!S.unlocked)return;S.sid++;clearInterval(S.tick);S.tick=0;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;S.items=[];S.files=[];S.unlocked=false;S.decoy=false;
  S.urls.forEach(u=>URL.revokeObjectURL(u));S.urls=[];Object.values(S.thumbs).forEach(u=>URL.revokeObjectURL(u));S.thumbs={};
  $$('#modals .mwrap').forEach(w=>w._close&&w._close(null));$('#modals').innerHTML='';$('#view').innerHTML='';clearTimeout(idleT);
  if(clipPending||clipT){clearTimeout(clipT);clipT=0;clipClear();}showUnlock();if(!silent)toast(T('locked'));}
@@ -898,24 +974,37 @@ async function offerQuick(){if(!S.unlocked)return;const bioOk=await bioAvailable
  if(r==='bio')await doSetupBio();else if(r==='pin'||r==='pattern')await doSetupQuick(r);}
 async function doSetupQuick(kind){const s=await askNewSecret(kind);if(!s)return;await setQuick(kind,s);toast(T('quick_set_ok'));rerender();}
 async function doSetupBio(){try{await hold(setupBio);toast(T('bio_ok'));}catch(e){toast(e.code==='noprf'?T('bio_unsupported'):T('bio_fail'),'bad');logErr('bio '+(e.name||'')+' '+e.message);}rerender();}
-async function restoreFlow(){const [f]=await pickFile($('#fbak'));if(!f)return;const txt=await f.text();if(isShareFile(txt)){if(S.unlocked)await importShare(txt);else toast(T('sh_need_unlock'),'bad');return;}
+async function restoreFlow(){const [f]=await pickFile($('#fbak'));if(!f)return;const txt=await f.text();
+ if(isShareFile(txt)){if(S.unlocked)await importShare(txt);else toast(T('sh_need_unlock'),'bad');return;}
  const d=parseBackup(txt);if(!d){toast(T('b_bad'),'bad');return;}
  let raw=null;for(;;){const pw=await promptDlg(T('b_pw_prompt'),{type:'password',text:T('b_pw_text')});if(pw==null)return;
   try{raw=await unwrapBackup(d,pw,false);break;}catch(e){try{raw=await unwrapBackup(d,pw,true);break;}catch(e2){toast(T('wrong_pw'),'bad');}}}
- const hasVault=!!(await DB.get('meta','vault'));if(hasVault&&!(await confirmDlg(T('b_replace'),{danger:true,ok:T('restore')})))return;
- toast(T('b_restoring'));if(S.unlocked){if(S.dekRaw)S.dekRaw.fill(0);S.unlocked=false;}
- await restoreBackup(d);LS.set('onboarded',1);LS.set('lastBackup',Date.now());toast(T('b_restored'));toast(T('b_quick_note'));await afterUnlock(raw);}
+ // 1) check the WHOLE backup before touching anything
+ toast(T('b_checking'));let P;
+ try{P=await prepareRestore(d,raw);}catch(e){raw.fill(0);logErr('restore check '+(e.code||e.message));
+  await alertDlg(e.code==='corrupt'?T('b_corrupt',{n:e.bad}):T('b_bad'),T('b_import'));return;}
+ // 2) ask with the real numbers
+ const hasVault=!!(await DB.get('meta','vault'));const st=P.stats;
+ let msg=T('b_summary',{i:st.items,f:st.files,d:st.created?fmtDate(st.created):'?'});if(st.unknown)msg+='\n'+T('b_unknown',{n:st.unknown});
+ if(hasVault)msg+='\n\n'+(S.unlocked?T('b_replace_cur',{i:live().length,f:liveFiles().length}):T('b_replace'));
+ const ch=await modal(`<h3 class="mh">↩ ${T('b_import')}</h3><p class="mtext">${esc(msg)}</p><div class="stack">${hasVault&&S.unlocked?`<button class="btn" data-v="bk">🛡️ ${T('b_backup_first')}</button>`:''}
+  <button class="btn pri ${hasVault?'danger':''}" data-v="go">${T('restore')}</button><button class="btn" data-v="0">${T('cancel')}</button></div>`,{onOpen:(s2,close)=>$$('[data-v]',s2).forEach(b=>b.onclick=()=>close(b.dataset.v))});
+ if(!ch||ch==='0'){raw.fill(0);return;}if(ch==='bk'){const ok=await backupDlg();if(!ok){raw.fill(0);return;}}
+ // 3) replace in ONE transaction (aborts entirely on any error) and verify by reading back
+ toast(T('b_restoring'));try{await commitRestore(P);}catch(e){logErr('restore commit '+(e.code||e.message));toast(e.code==='verify'?T('b_verify_fail'):T('b_restore_fail'),'bad');raw.fill(0);return;}
+ if(S.unlocked){S.sid++;clearInterval(S.tick);if(S.dekRaw)S.dekRaw.fill(0);S.unlocked=false;}
+ LS.set('onboarded',1);LS.set('lastBackup',Date.now());LS.set('keysAt',0);toast(T('b_restored'));toast(T('b_quick_note'));await afterUnlock(raw);}
 /* ================= TOTP (RFC 6238) ================= */
 function b32dec(s){const A='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';s=String(s).toUpperCase().replace(/[\s=-]/g,'');let bits=0,val=0;const out=[];
  for(const c of s){const i=A.indexOf(c);if(i<0)throw new Error('b32');val=((val<<5)|i)&0xffffff;bits+=5;if(bits>=8){out.push((val>>>(bits-8))&255);bits-=8;}}return new Uint8Array(out);}
 function parseOtp(str){str=String(str||'').trim();if(!str)return null;
  try{if(/^otpauth-migration:/i.test(str))return {err:'migration'};
   if(/^otpauth:\/\//i.test(str)){const u=new URL(str);if(u.host.toLowerCase()!=='totp')return {err:'hotp'};const q=u.searchParams;const label=decodeURIComponent(u.pathname.replace(/^\//,''));
-   const o={secret:(q.get('secret')||'').replace(/\s/g,''),digits:+(q.get('digits')||6),period:+(q.get('period')||30),algo:(q.get('algorithm')||'SHA1').toUpperCase(),issuer:q.get('issuer')||(label.includes(':')?label.split(':')[0]:''),label};
-   if(!o.secret||!b32dec(o.secret).length||![6,7,8].includes(o.digits)||!(o.period>0))return {err:'bad'};return o;}
+   const o={secret:(q.get('secret')||'').replace(/\s/g,''),digits:Number(q.get('digits')||6),period:Number(q.get('period')||30),algo:(q.get('algorithm')||'SHA1').toUpperCase().replace('-',''),issuer:q.get('issuer')||(label.includes(':')?label.split(':')[0]:''),label};
+   if(!o.secret||b32dec(o.secret).length<5||![6,7,8].includes(o.digits)||!Number.isInteger(o.period)||o.period<10||o.period>300||!['SHA1','SHA256','SHA512'].includes(o.algo))return {err:'bad'};return o;}
   const o={secret:str.replace(/\s/g,''),digits:6,period:30,algo:'SHA1',issuer:'',label:''};if(b32dec(o.secret).length<5)return {err:'bad'};return o;}
  catch(e){return {err:'bad'};}}
-async function totpCode(o,now=Date.now()){const alg={SHA1:'SHA-1',SHA256:'SHA-256',SHA512:'SHA-512'}[o.algo]||'SHA-1';
+async function totpCode(o,now=Date.now()){const alg={SHA1:'SHA-1',SHA256:'SHA-256',SHA512:'SHA-512'}[o.algo];if(!alg)throw new Error('algo');
  const key=await crypto.subtle.importKey('raw',b32dec(o.secret),{name:'HMAC',hash:alg},false,['sign']);let c=Math.floor(now/1000/o.period);
  const buf=new Uint8Array(8);for(let i=7;i>=0;i--){buf[i]=c&255;c=Math.floor(c/256);}const h=new Uint8Array(await crypto.subtle.sign('HMAC',key,buf));
  const off=h[h.length-1]&15;const bin=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];return String(bin%(10**o.digits)).padStart(o.digits,'0');}
@@ -927,9 +1016,12 @@ async function decodeQR(file){if(!('BarcodeDetector' in window))throw Object.ass
 function homography(srcPts,dstPts){const A=[],b=[];for(let i=0;i<4;i++){const [x,y]=dstPts[i],[u,v]=srcPts[i];A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v);}
  for(let c=0;c<8;c++){let p=c;for(let r=c+1;r<8;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;[A[c],A[p]]=[A[p],A[c]];[b[c],b[p]]=[b[p],b[c]];
   for(let r=0;r<8;r++){if(r===c)continue;const f=A[r][c]/A[c][c];for(let k=c;k<8;k++)A[r][k]-=f*A[c][k];b[r]-=f*b[c];}}return b.map((v,i)=>v/A[i][i]);}
-function warpQuad(src,q){const W=src.width,H=src.height;const P=q.map(([x,y])=>[x*W,y*H]);const d=(a,c)=>Math.hypot(a[0]-c[0],a[1]-c[1]);
+function quadOk(q,W,H){const P=q.map(([x,y])=>[x*W,y*H]);let sign=0;
+ for(let i=0;i<4;i++){const a=P[i],b=P[(i+1)%4],c=P[(i+2)%4];const cr=(b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]);if(Math.abs(cr)<1e-6)return false;const sg=Math.sign(cr);if(sign&&sg!==sign)return false;sign=sg;}
+ let area=0;for(let i=0;i<4;i++){const a=P[i],b=P[(i+1)%4];area+=a[0]*b[1]-b[0]*a[1];}return Math.abs(area)/2>W*H*0.02;}
+function warpQuad(src,q){if(!quadOk(q,src.width,src.height))throw Object.assign(new Error('quad'),{code:'quad'});const W=src.width,H=src.height;const P=q.map(([x,y])=>[x*W,y*H]);const d=(a,c)=>Math.hypot(a[0]-c[0],a[1]-c[1]);
  let ow=Math.max(d(P[0],P[1]),d(P[3],P[2])),oh=Math.max(d(P[0],P[3]),d(P[1],P[2]));const k=Math.min(1,2000/Math.max(ow,oh));ow=Math.max(8,Math.round(ow*k));oh=Math.max(8,Math.round(oh*k));
- const h=homography(P,[[0,0],[ow,0],[ow,oh],[0,oh]]);const sd=src.getContext('2d').getImageData(0,0,W,H).data;
+ const h=homography(P,[[0,0],[ow,0],[ow,oh],[0,oh]]);if(!h.every(Number.isFinite))throw Object.assign(new Error('quad'),{code:'quad'});const sd=src.getContext('2d').getImageData(0,0,W,H).data;
  const out=document.createElement('canvas');out.width=ow;out.height=oh;const oc=out.getContext('2d');const od=oc.createImageData(ow,oh);const o=od.data;
  for(let y=0;y<oh;y++)for(let x=0;x<ow;x++){const den=h[6]*x+h[7]*y+1;let u=(h[0]*x+h[1]*y+h[2])/den,v=(h[3]*x+h[4]*y+h[5])/den;
   u=Math.min(W-1.001,Math.max(0,u));v=Math.min(H-1.001,Math.max(0,v));const x0=u|0,y0=v|0,fx=u-x0,fy=v-y0;const i00=(y0*W+x0)*4,i10=i00+4,i01=i00+W*4,i11=i01+4,di=(y*ow+x)*4;
@@ -964,16 +1056,18 @@ async function scanDoc(file){let bmp;try{bmp=await createImageBitmap(file);}catc
   $('[data-a=rot]',s).onclick=()=>{const n=document.createElement('canvas');n.width=src.height;n.height=src.width;const c=n.getContext('2d');c.translate(n.width,0);c.rotate(Math.PI/2);c.drawImage(src,0,0);src=n;q=[[.06,.06],[.94,.06],[.94,.94],[.06,.94]];draw();};
   $('[data-a=full]',s).onclick=()=>{q=[[0,0],[1,0],[1,1],[0,1]];draw();};
   $('[data-a=x]',s).onclick=()=>close(null);
-  $('[data-a=ok]',s).onclick=()=>{$('#sc1',s).classList.add('hide');$('#sc2',s).classList.remove('hide');setTimeout(showResult,30);};
+  const sv=$('[data-a=save]',s);
+  $('[data-a=ok]',s).onclick=()=>{if(!quadOk(q,src.width,src.height)){toast(T('scan_badquad'),'bad');return;}sv.disabled=true;result=null;$('#sc1',s).classList.add('hide');$('#sc2',s).classList.remove('hide');
+   setTimeout(()=>{try{showResult();sv.disabled=false;}catch(e){toast(T('scan_badquad'),'bad');$('#sc2',s).classList.add('hide');$('#sc1',s).classList.remove('hide');}},30);};
   $('[data-a=back]',s).onclick=()=>{$('#sc2',s).classList.add('hide');$('#sc1',s).classList.remove('hide');draw();};
   $$('[data-m]',s).forEach(b=>b.onclick=()=>{mode=b.dataset.m;$$('[data-m]',s).forEach(x=>x.setAttribute('aria-pressed',x===b));result=enhance(s._warped,mode);const r=$('#scr',s);r.getContext('2d').drawImage(result,0,0);});
-  $('[data-a=save]',s).onclick=async()=>{const b=await new Promise(r=>result.toBlob(r,'image/jpeg',.86));close(new File([b],'scan-'+ymd()+'-'+Date.now().toString(36).slice(-4)+'.jpg',{type:'image/jpeg'}));};
+  $('[data-a=save]',s).onclick=async()=>{if(!result)return;sv.disabled=true;const b=await new Promise(r=>result.toBlob(r,'image/jpeg',.86));if(!b||!b.size){toast(T('file_fail'),'bad');sv.disabled=false;return;}close(new File([b],'scan-'+ymd()+'-'+Date.now().toString(36).slice(-4)+'.jpg',{type:'image/jpeg'}));};
   requestAnimationFrame(draw);}});}
 
 /* ================= adding files (shared by Files screen and item attachments) ================= */
 const catFor=t=>({card:'money',bank:'money',identity:'id',wifi:'home'}[t]||'other');
-async function addFilesFlow(inp,cat,itemId){const fl=await pickFile(inp);if(!fl.length)return 0;let n=0;
- for(let i=0;i<fl.length;i++){const f=fl[i];const pr=$('#fprog');if(pr)pr.textContent=T('encrypting',{i:i+1,n:fl.length});
+async function addFilesFlow(inp,cat,itemId){const fl=await pickFile(inp);if(!fl.length)return 0;let n=0;const sid=S.sid;
+ for(let i=0;i<fl.length;i++){if(sid!==S.sid||!S.unlocked)return n;const f=fl[i];const pr=$('#fprog');if(pr)pr.textContent=T('encrypting',{i:i+1,n:fl.length});
   if(f.size>100*1048576){toast(T('file_big',{n:f.name}),'bad');continue;}try{await addOneFile(f,cat,itemId);n++;}catch(e){toast(T('err_generic',{e:e.message}),'bad');}}
  const pr=$('#fprog');if(pr)pr.textContent='';if(n)toast(T('files_added',{n}));return n;}
 async function scanFlow(cat,itemId){const [f]=await pickFile($('#fcam'));if(!f)return 0;const out=await scanDoc(f);if(!out)return 0;await addOneFile(out,cat,itemId);toast(T('scan_saved'));return 1;}
@@ -987,46 +1081,42 @@ async function shareItem(it){if(!(await confirmDlg(T('sh_intro'),{title:T('sh_t'
  const files=[];let total=0,skipped=0;for(const f of attachments(it.id)){if(total+f.size>25*1048576){skipped++;continue;}const bl=await fileBlob(f);total+=f.size;files.push({name:f.name,type:f.type,cat:f.cat,data:b64(await bl.arrayBuffer())});}
  const payload={item:{type:it.type,title:it.title,f:it.f||{},cf:it.cf||[],ic:it.ic||'',tplName:it.tplName||''},files,from:LS.get('user',''),t:Date.now()};
  const code=genShareCode(),salt=rand(16);const e=await enc(await kdf(normRec(code),salt,SHARE_ITER),te.encode(JSON.stringify(payload)));
- const slug=String(it.title).replace(/[^\p{L}\p{N}_-]+/gu,'-').slice(0,24)||'item';
- const file=new File([JSON.stringify({app:'VaultNest',kind:'share',format:1,salt:b64(salt),iter:SHARE_ITER,iv:b64(e.iv),ct:b64(e.ct)})],`vaultnest-share-${slug}.json`,{type:'application/json'});
+ const file=new File([JSON.stringify({app:'VaultNest',kind:'share',format:1,salt:b64(salt),iter:SHARE_ITER,iv:b64(e.iv),ct:b64(e.ct)})],`vaultnest-share-${ymd()}-${Date.now().toString(36).slice(-4)}.json`,{type:'application/json'});
  await modal(`<h3 class="mh">↗ ${T('sh_t')}</h3><p class="mtext">${T('sh_code_is')}</p><div class="reccode">${esc(code)}</div>${skipped?`<p class="mlbl" style="color:var(--warn)">${T('sh_skipped',{n:skipped})}</p>`:''}
  <p class="mlbl">${T('sh_how')}</p><div class="stack" style="margin-top:10px"><button class="btn pri" data-v="f">↗ ${T('sh_send_file')}</button><button class="btn" data-v="c">⧉ ${T('sh_copy_code')}</button><button class="btn" data-v="x">${T('done')}</button></div>`,
  {sticky:true,onOpen:(s,close)=>{$('[data-v=f]',s).onclick=()=>shareOrSave(file);$('[data-v=c]',s).onclick=()=>copyText(code);$('[data-v=x]',s).onclick=()=>close();}});}
-async function importShare(txt){const d=JSON.parse(txt);let payload=null;
+async function importShare(txt){let d;try{d=JSON.parse(txt);ub(d.salt,16);ub(d.iv,12);ub(d.ct);ckIter(d.iter);}catch(e){toast(T('sh_bad'),'bad');return;}let payload=null;
  for(;;){const c=await promptDlg(T('sh_code_prompt'),{text:T('sh_code_text'),mono:true,ltr:true,ph:'XXXX-XXXX-XXXX'});if(c==null)return;
   try{payload=JSON.parse(td.decode(await dec(await kdf(normRec(c),unb64(d.salt),d.iter),unb64(d.iv),unb64(d.ct))));break;}catch(e){toast(T('sh_wrong'),'bad');}}
- const p=payload.item;if(!(await confirmDlg(T('sh_confirm',{n:p.title,f:payload.files.length}),{title:T('sh_recv_t'),ok:T('save')})))return;
- const it={id:uid(),type:TYPES[p.type]?p.type:'note',title:p.title,fav:false,created:Date.now(),pwChanged:Date.now(),f:p.f||{},cf:p.cf||[],ic:p.ic||'',tplName:p.tplName||''};await saveItem(it);
- for(const f of payload.files||[])await addOneFile(new File([unb64(f.data)],f.name,{type:f.type}),f.cat||'other',it.id);
- toast(T('sh_saved'));go('item',{id:it.id});}
+ // validate the decrypted content before saving anything
+ const p=payload&&payload.item;const files=Array.isArray(payload&&payload.files)?payload.files:null;
+ if(!p||typeof p.title!=='string'||typeof p.type!=='string'||!files||files.length>30||typeof (p.f||{})!=='object'){toast(T('sh_bad'),'bad');return;}
+ let total=0;for(const f of files){if(!f||typeof f.name!=='string'||typeof f.data!=='string'||!B64RE.test(f.data)){toast(T('sh_bad'),'bad');return;}total+=f.data.length*.75;}
+ if(total>30*1048576){toast(T('sh_bad'),'bad');return;}
+ if(!(await confirmDlg(T('sh_confirm',{n:p.title,f:files.length}),{title:T('sh_recv_t'),ok:T('save')})))return;
+ const cf=Array.isArray(p.cf)?p.cf.filter(c=>c&&typeof c.n==='string').map(c=>({n:c.n,v:String(c.v||''),s:!!c.s})):[];
+ const it={id:uid(),type:TYPES[p.type]&&p.type[0]!=='_'?p.type:'note',title:p.title.slice(0,200),fav:false,created:Date.now(),updated:Date.now(),pwChanged:Date.now(),f:p.f||{},cf,ic:String(p.ic||''),tplName:String(p.tplName||'')};
+ // encrypt everything first, then write item + all files in ONE transaction
+ const recs=[];const metas=[];
+ for(const f of files){const buf=unb64(f.data);const fileObj=new File([buf],f.name,{type:f.type||'application/octet-stream'});const e=await enc(S.dek,buf);
+  const th=/^image\//.test(fileObj.type)?await makeThumb(fileObj):null;const te2=th?await enc(S.dek,th):null;const id=uid();
+  const meta={name:f.name,type:fileObj.type,size:buf.length,cat:FCATS.includes(f.cat)?f.cat:'other',created:Date.now(),deletedAt:0,itemId:it.id};const m=await encJ(meta);
+  recs.push([id,{iv:e.iv,ct:e.ct},{id,miv:m.iv,mct:m.ct,tiv:te2?te2.iv:null,tct:te2?te2.ct:null}]);meta.id=id;meta.hasThumb=!!te2;metas.push(meta);}
+ const ie=await encJ(it);
+ try{await DB.run(['items','files','blobs'],'readwrite',t=>{t.objectStore('items').put({id:it.id,iv:ie.iv,ct:ie.ct},it.id);recs.forEach(([id,b,fr])=>{t.objectStore('blobs').put(b,id);t.objectStore('files').put(fr,id);});});}
+ catch(e){toast(T('save_fail',{e:e.message}),'bad');return;}
+ S.items.push(it);metas.forEach(m=>S.files.push(m));toast(T('sh_saved'));go('item',{id:it.id});}
 async function receiveShareFlow(){const [f]=await pickFile($('#fbak'));if(!f)return;const txt=await f.text();if(isShareFile(txt))await importShare(txt);else toast(T('sh_bad'),'bad');}
 
-/* ================= "Share to VaultNest" (Android share target, handled by sw.js) ================= */
-async function handleShare(){S.pendingShare=false;if(!S.unlocked||!window.caches)return;let c;try{c=await caches.open('vaultnest-share');}catch(e){return;}
- const mr=await c.match('./__share/meta');if(!mr){await caches.delete('vaultnest-share');return;}let m;try{m=await mr.json();}catch(e){m={};}
- const files=[];for(const f of m.files||[]){const r=await c.match('./__share/'+f.key);if(r)files.push(new File([await r.blob()],f.name||'shared',{type:f.type||'application/octet-stream'}));}
- await caches.delete('vaultnest-share');if(!m.t||Date.now()-m.t>3600e3)return;
- if(files.length===1&&/json/i.test(files[0].type+files[0].name)){const txt=await files[0].text();if(isShareFile(txt)){await importShare(txt);return;}}
- if(files.length){const r=await modal(`<h3 class="mh">📥 ${T('st_files_t',{n:files.length})}</h3><p class="mtext">${files.map(f=>esc(f.name)).join('<br>')}</p>
-  <label class="lbl" for="stc">${T('file_cat')}</label><select id="stc" class="inp">${FCATS.map(c2=>`<option value="${c2}">${T('fc_'+c2)}</option>`).join('')}</select>
-  <div class="mact"><button class="btn" data-v="0">${T('cancel')}</button><button class="btn pri" data-v="1">🔒 ${T('st_save')}</button></div>`,
-  {onOpen:(s,close)=>{$('[data-v="0"]',s).onclick=()=>close(null);$('[data-v="1"]',s).onclick=()=>close($('#stc',s).value);}});
-  if(!r)return;let n=0;for(const f of files){if(f.size>100*1048576)continue;await addOneFile(f,r);n++;}toast(T('files_added',{n}));toast(T('orig_note_short'));go('files',{cat:r});return;}
- const txt=[m.url,m.text,m.title].filter(Boolean).join(' ');const um=/(https?:\/\/[^\s]+)/i.exec(txt)||/\b([a-z0-9-]+(\.[a-z0-9-]+)+\.[a-z]{2,})\b/i.exec(txt);const url=um?um[1]:'';const host=hostOf(url);
- if(!host){toast(T('st_nothing'),'bad');return;}
- const same=h=>h&&(h===host||h.endsWith('.'+host)||host.endsWith('.'+h));
- const matches=sortItems(live().filter(it=>it.f&&same(hostOf(it.f.url))));
- const r=await modal(`<h3 class="mh">🔎 ${esc(host)}</h3><p class="mlbl">${matches.length?T('st_found',{n:matches.length}):T('st_no_match')}</p><div id="stm">${itemRows(matches)}</div>
-  <div class="stack" style="margin-top:10px"><button class="btn pri" data-v="new">＋ ${T('st_new_login')}</button><button class="btn" data-v="0">${T('close')}</button></div>`,
-  {onOpen:(s,close)=>{$$('.row[data-id]',s).forEach(b=>b.onclick=()=>close('id:'+b.dataset.id));$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v));}});
- if(r&&r.startsWith('id:'))go('item',{id:r.slice(3)});else if(r==='new'){const it=await editItem({type:'login',pre:{title:host,f:{url}}});if(it&&it.id)go('item',{id:it.id});}}
+/* "Share to VaultNest" (share_target) is disabled in 1.1.1: incoming shares were parked unencrypted.
+   It returns in a later version with an encrypted inbox (public-key encryption inside sw.js). */
 
 /* ================= emergency kit (print) ================= */
 function kitHTML(code){const addr=location.origin+location.pathname.replace(/index\.html$/,'');const user=LS.get('user','');
  const box=code?`<div class="k-code">${esc(code)}</div>`:`<div class="k-code k-blank">____-____-____-____-____-____</div>`;
  return `<div class="k-wrap" dir="${document.documentElement.dir}"><h1>VaultNest — ${T('kit_t')}</h1><p>${user?esc(user)+' · ':''}${fmtDate(Date.now())}</p>
  <h2>${T('kit_addr')}</h2><p class="k-mono">${esc(addr)}</p><h2>${T('rec_t')}</h2>${box}<p>${T('kit_code_note')}</p>
- <h2>${T('kit_backup_where')}</h2><div class="k-line"></div><h2>${T('kit_steps_t')}</h2><ol>${[1,2,3,4].map(i=>`<li>${T('kit_s'+i)}</li>`).join('')}</ol>
+ <p>${code?T('kit_match',{d:fmtDate(Date.now())}):''}</p><h2>${T('kit_backup_where')}</h2><div class="k-line"></div><h2>${T('kit_steps_t')}</h2><ol>${[1,2,3,4].map(i=>`<li>${T('kit_s'+i)}</li>`).join('')}</ol>
  <p class="k-warn">${T('kit_warn')}</p><p class="k-foot">AppNest · VaultNest ${APP_VERSION}</p></div>`;}
 async function emergencyKit(){const r=await modal(`<h3 class="mh">🧰 ${T('kit_t')}</h3><p class="mtext">${T('kit_d')}</p><div class="stack"><button class="btn pri" data-v="new">${T('kit_new')}</button><button class="btn" data-v="blank">${T('kit_blank')}</button><button class="link" data-v="0">${T('cancel')}</button></div><p class="mlbl">${T('kit_new_note')}</p>`,
  {onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v))});if(!r||r==='0')return;
@@ -1034,23 +1124,26 @@ async function emergencyKit(){const r=await modal(`<h3 class="mh">🧰 ${T('kit_
  const k=$('#printkit');k.innerHTML=kitHTML(code);await hold(async()=>{window.print();await sleep(500);});
  if(code)await modal(`<h3 class="mh">${T('rec_t')}</h3><p class="mtext">${T('kit_after')}</p><div class="reccode">${esc(code)}</div><label class="chk"><input type="checkbox" id="kk"> ${T('rec_check')}</label><div class="mact"><button class="btn pri" id="kd" disabled>${T('done')}</button></div>`,
   {sticky:true,onOpen:(s,close)=>{$('#kk',s).onchange=e=>{$('#kd',s).disabled=!e.target.checked;};$('#kd',s).onclick=()=>close();}});
- k.innerHTML='';}
+ k.innerHTML='';if(code)await mustBackupAfterKeys();}
+// After a new recovery code or master password, old backups still open only with the OLD code/password.
+async function mustBackupAfterKeys(){await confirmDlg(T('keys_backup_now'),{title:T('b_export'),ok:T('b_export'),no:T('later')})&&await backupDlg();}
 window.addEventListener('afterprint',()=>{setTimeout(()=>{const k=$('#printkit');if(k&&!$('#modals').children.length)k.innerHTML='';},800);});
 
 /* ================= calendar reminder for expiry ================= */
-function expDate(it){let d=null;if(it.type==='card'&&it.f.expiry){const m=/^(\d{1,2})\s*\/\s*(\d{2,4})$/.exec(it.f.expiry.trim());if(m){let y=+m[2];if(y<100)y+=2000;d=new Date(y,+m[1],0);}}
+function expDate(it){let d=null;if(it.type==='card'&&it.f.expiry){const m=/^(\d{1,2})\s*\/\s*(\d{2,4})$/.exec(it.f.expiry.trim());if(m&&+m[1]>=1&&+m[1]<=12){let y=+m[2];if(y<100)y+=2000;d=new Date(y,+m[1],0);}}
  if(it.type==='identity'&&it.f.docExpiry)d=new Date(it.f.docExpiry+'T00:00');return d&&!isNaN(d)?d:null;}
 const ymdc=d=>ymd(d).replace(/-/g,'');
 async function calendarDlg(it){const exp=expDate(it);if(!exp)return;let ev=new Date(exp.getTime()-30*864e5);const tm=new Date();tm.setDate(tm.getDate()+1);tm.setHours(0,0,0,0);if(ev<tm)ev=tm;
- const ev2=new Date(ev.getTime()+864e5);const title=T('cal_title',{n:it.title,d:fmtDate(exp)});const details=T('cal_details');
- const g='https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+ymdc(ev)+'/'+ymdc(ev2)+'&details='+encodeURIComponent(details);
+ const ev2=new Date(ev.getTime()+864e5);const details=T('cal_details');const soon=ev.getTime()===tm.getTime();
+ const defTitle=T(it.type==='card'?'cal_title_card':'cal_title_doc',{d:fmtDate(exp)});let title=defTitle;
+ const gURL=()=>'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+ymdc(ev)+'/'+ymdc(ev2)+'&details='+encodeURIComponent(details);
  const icsTxt=s=>String(s).replace(/([\\;,])/g,'\\$1').replace(/\n/g,'\\n');
- const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//AppNest//VaultNest//EN','CALSCALE:GREGORIAN','BEGIN:VEVENT','UID:'+uid()+'@vaultnest','DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,''),
+ const icsOf=()=>['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//AppNest//VaultNest//EN','CALSCALE:GREGORIAN','BEGIN:VEVENT','UID:'+uid()+'@vaultnest','DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,''),
   'DTSTART;VALUE=DATE:'+ymdc(ev),'DTEND;VALUE=DATE:'+ymdc(ev2),'SUMMARY:'+icsTxt(title),'DESCRIPTION:'+icsTxt(details),'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+icsTxt(title),'TRIGGER:PT9H','END:VALARM','END:VEVENT','END:VCALENDAR'].join('\r\n');
- await modal(`<h3 class="mh">📅 ${T('cal_t')}</h3><p class="mtext">${esc(title)}<br><span class="mlbl">${T('cal_when',{d:fmtDate(ev)})}</span></p><p class="mlbl">${T('cal_privacy')}</p>
+ await modal(`<h3 class="mh">📅 ${T('cal_t')}</h3><label class="lbl" for="calt">${T('cal_title_lbl')}</label><input id="calt" class="inp" value="${esc(defTitle)}" autocomplete="off"><p class="mlbl">${soon?T('cal_when_soon',{d:fmtDate(ev)}):T('cal_when',{d:fmtDate(ev)})}</p><p class="mlbl" style="color:var(--warn)">${T('cal_privacy')}</p>
  <div class="stack" style="margin-top:10px"><button class="btn pri" data-v="g">${T('cal_google')}</button><button class="btn" data-v="i">${T('cal_ics')}</button><button class="btn" data-v="x">${T('close')}</button></div>`,
- {onOpen:(s,close)=>{$('[data-v=g]',s).onclick=()=>{hold(async()=>{window.open(g,'_blank','noopener,noreferrer');});close();};
-  $('[data-v=i]',s).onclick=async()=>{await shareOrSave(new File([ics],'vaultnest-reminder.ics',{type:'text/calendar'}));close();};$('[data-v=x]',s).onclick=()=>close();}});}
+ {onOpen:(s,close)=>{const rd=()=>{title=$('#calt',s).value.trim()||defTitle;};$('[data-v=g]',s).onclick=()=>{rd();const g=gURL();hold(async()=>{window.open(g,'_blank','noopener,noreferrer');});close();};
+  $('[data-v=i]',s).onclick=async()=>{rd();await shareOrSave(new File([icsOf()],'vaultnest-reminder.ics',{type:'text/calendar'}));close();};$('[data-v=x]',s).onclick=()=>close();}});}
 
 /* ================= Wi-Fi QR ================= */
 function qrSVG(text){qrcode.stringToBytes=qrcode.stringToBytesFuncs['UTF-8'];const qr=qrcode(0,'M');qr.addData(text,'Byte');qr.make();const n=qr.getModuleCount();let p='';
@@ -1096,15 +1189,9 @@ async function templatesDlg(){for(;;){const L=templates();const r=await modal(`<
  <button class="btn pri" data-v="new">＋ ${T('tpl_new')}</button><button class="btn" data-v="0">${T('close')}</button></div>`,{onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v))});
  if(!r||r==='0')return;await tplEditor(r==='new'?null:S.items.find(x=>x.id===r));}}
 
-/* ================= decoy vault ================= */
-async function decoySetup(){const r=await modal(`<h3 class="mh">🎭 ${T('dc_t')}</h3><p class="mtext">${T('dc_d')}</p>${pwFields('dc')}<div class="err" id="dcerr"></div>
- <div class="mact"><button class="btn" data-a="x">${T('cancel')}</button><button class="btn pri" data-a="s">${T('dc_create')}</button></div>`,
- {sticky:true,onOpen:(s,close)=>{bindMeter($('#dc1',s),$('#dcm',s),$('#dcml',s));$('[data-a=x]',s).onclick=()=>close(null);
-  $('[data-a=s]',s).onclick=async()=>{const err=$('#dcerr',s);const pw=await readPwFields(s,'dc',err);if(!pw)return;
-   try{const x=await unwrapPw(pw);x.fill(0);err.textContent=T('dc_same');return;}catch(e){}
-   const raw=rand(32);await setDecoyPw(raw,pw);raw.fill(0);S.decoyExists=true;close('ok');};}});
- if(r==='ok')await confirmDlg(T('dc_done'),{title:T('dc_t'),ok:T('confirm'),no:T('close')});rerender();}
-async function decoyRemove(){if(!(await confirmDlg(T('dc_remove_c'),{danger:true,ok:T('dc_remove')})))return;await removeDecoy();toast(T('dc_removed'));rerender();}
+/* ================= legacy decoy (feature removed in 1.1.1) ================= */
+async function legacyDecoyDlg(){const pw=await promptDlg(T('dcl_t'),{type:'password',text:T('dcl_d')});if(pw==null)return;
+ let r;try{r=await removeDecoyWith(pw);}catch(e){toast(T('wrong_pw'),'bad');return;}toast(T('dcl_done',{i:r.items,f:r.files}));await loadAll();rerender();}
 /* ================= item types ================= */
 const TYPES={
  login:{ic:'🔑',f:[['username','text'],['password','secret',{gen:1,pw:1}],['url','url'],['totp','totp'],['notes','area']]},
@@ -1150,8 +1237,9 @@ function wire(V){$$('[data-back]',V).forEach(b=>b.onclick=back);$$('[data-go]',V
 /* ================= home ================= */
 function backupNag(){const n=live().length+liveFiles().length;if(!n)return '';const lb=LS.get('lastBackup',0);
  if(!lb)return `<div class="banner"><p>${T('backup_never')}</p><button class="btn sm" data-bk>${T('backup_now')}</button></div>`;
+ if(LS.get('keysAt',0)>lb)return `<div class="banner"><p>${T('backup_keys')}</p><button class="btn sm" data-bk>${T('backup_now')}</button></div>`;
  const d=Math.floor((Date.now()-lb)/864e5);return d>=14?`<div class="banner"><p>${T('backup_nag',{d})}</p><button class="btn sm" data-bk>${T('backup_now')}</button></div>`:'';}
-function itemRows(list){if(!list.length)return '';return list.map(it=>`<button class="row" data-id="${esc(it.id)}"><span class="ic">${esc(icOf(it))}</span><span class="rt"><b>${esc(it.title)}</b><small>${esc(subtitle(it))}</small></span>${it.fav?'<span class="star" aria-hidden="true">★</span>':''}${attachments(it.id).length?'<span class="mlbl" aria-hidden="true">📎</span>':''}</button>`).join('');}
+function itemRows(list){if(!list.length)return '';const att=new Set(S.files.filter(f=>f.itemId&&!f.deletedAt).map(f=>f.itemId));return list.map(it=>`<button class="row" data-id="${esc(it.id)}"><span class="ic">${esc(icOf(it))}</span><span class="rt"><b>${esc(it.title)}</b><small>${esc(subtitle(it))}</small></span>${it.fav?'<span class="star" aria-hidden="true">★</span>':''}${att.has(it.id)?'<span class="mlbl" aria-hidden="true">📎</span>':''}</button>`).join('');}
 function wireRows(root){$$('.row[data-id]',root).forEach(r=>{const it=()=>S.items.find(x=>x.id===r.dataset.id);r.onclick=()=>go('item',{id:r.dataset.id});
  longPress(r,async()=>{const x=it();if(x&&!x.deletedAt){await editItem(x);rerender();}});});}
 const sortItems=a=>a.sort((x,y)=>(y.fav?1:0)-(x.fav?1:0)||String(x.title).localeCompare(String(y.title),CUR));
@@ -1217,7 +1305,7 @@ VIEWS.item=(p,V)=>{const it=S.items.find(x=>x.id===p.id);if(!it||it.deletedAt){b
  def.f.forEach(([k,t,o={}])=>{let v=it.f[k];if(v==null||v==='')return;
   if(t==='totp'){rows+=`<div class="fld"><label>${T('f_totp')}</label><div class="fline"><div class="fv totp mono" dir="ltr" data-totp>··· ···</div><span class="tsec" data-tsec></span><button class="fa" data-tcopy aria-label="${T('copy')}">⧉</button></div><p class="mlbl">${esc(parseOtp(v)&&parseOtp(v).issuer||'')}</p></div>`;return;}
   const disp=t==='select'&&v==='none'?T('sec_none'):t==='date'?fmtDate(v):o.card?grp4(v):v;vals[k]={disp,copy:k==='number'?String(v).replace(/\s/g,''):String(v),card:o.card};let badges='';
-  if(o.pw){const st=strength(v);const n=reuse.get(v)||0;badges=`<div class="badges"><span class="badge" style="color:${STR_COL[st.s]}">${T('str_'+st.s)}</span>${n>1?`<span class="badge b-warn">${T('reused_n',{n})}</span>`:''}${Date.now()-(it.pwChanged||it.created)>365*864e5?`<span class="badge b-mut">${T('old_pw')}</span>`:''}${it.breach>0?`<span class="badge b-bad">${T('breach_found',{n:it.breach.toLocaleString()})}</span>`:''}<button class="btn sm" data-breach="${k}">🔎 ${T('check_breach')}</button><span class="mlbl" data-bres="${k}"></span></div>`;}
+  if(o.pw){const st=strength(v);const n=reuse.get(v)||0;badges=`<div class="badges">${/^\s|\s$/.test(v)?`<span class="badge b-warn">${T('pw_space')}</span>`:''}<span class="badge" style="color:${STR_COL[st.s]}">${T('str_'+st.s)}</span>${n>1?`<span class="badge b-warn">${T('reused_n',{n})}</span>`:''}${Date.now()-(it.pwChanged||it.created)>365*864e5?`<span class="badge b-mut">${T('old_pw')}</span>`:''}${it.breach>0?`<span class="badge b-bad">${T('breach_found',{n:it.breach.toLocaleString()})}</span>`:''}<button class="btn sm" data-breach="${k}">🔎 ${T('check_breach')}</button><span class="mlbl" data-bres="${k}"></span></div>`;}
   if((o.exp&&it.type==='card')||k==='docExpiry'){const e=expInfo(it);if(e)badges=`<div class="badges"><span class="badge ${e.past?'b-bad':'b-warn'}">${e.past?T('exp_past'):T('exp_soon',{d:e.days})}</span></div>`;}
   rows+=row(T('f_'+k),k,disp,{secret:t==='secret'||o.hidden,mono:t==='secret',ltr:t==='secret'||t==='url',pre:t==='area',url:t==='url',card:o.card,badges});});
  (it.cf||[]).forEach((c,i)=>{if(!c.v)return;const k='cf'+i;vals[k]={disp:c.v,copy:c.v};rows+=row(c.n||'—',k,c.v,{secret:c.s,mono:c.s,ltr:c.s});});
@@ -1242,7 +1330,7 @@ VIEWS.item=(p,V)=>{const it=S.items.find(x=>x.id===p.id);if(!it||it.deletedAt){b
    const left=o.period-Math.floor(Date.now()/1000)%o.period;const sEl=$('[data-tsec]',V);if(sEl){sEl.textContent=left+'s';sEl.style.color=left<=5?'var(--bad)':'var(--mut)';}};
   upd();S.tick=setInterval(upd,1000);$('[data-tcopy]',V).onclick=()=>{if(cur)copyText(cur);};}
  const ed=async()=>{const r=await editItem(it);if(r==='deleted'){back();return;}rerender();};$('#iedit',V).onclick=ed;$('#iedit2',V).onclick=ed;
- $('#ifav',V).onclick=async()=>{it.fav=!it.fav;await saveItem(it);toast(it.fav?T('fav_on'):T('fav_off'));rerender();};
+ $('#ifav',V).onclick=async()=>{it.fav=!it.fav;try{await saveItem(it);toast(it.fav?T('fav_on'):T('fav_off'));}catch(e){it.fav=!it.fav;toast(T('save_fail',{e:e.message}),'bad');}rerender();};
  const q=$('#iqr',V);if(q)q.onclick=()=>wifiQR(it);const c=$('#ical',V);if(c)c.onclick=()=>calendarDlg(it);
  const h=$('#ihist',V);if(h)h.onclick=async()=>{await histDlg(it);rerender();};const sh=$('#ishare',V);if(sh)sh.onclick=()=>shareItem(it);
  const cat=catFor(it.type);
@@ -1282,8 +1370,9 @@ function editItem(src){const isNew=!src.id;const pre=src.pre||{};
     const i=$('#e_totp',s);i.value=v;const tt=$('#e_title',s);if(!tt.value.trim()&&o.issuer)tt.value=o.issuer;const un=$('#e_username',s);if(un&&!un.value&&o.label.includes(':'))un.value=o.label.split(':').slice(1).join(':').trim();toast(T('totp_ok'));}
    catch(e){toast(e.code==='nodetector'?T('totp_nodetector'):T('totp_noqr'),'bad');}});
   $('[data-a=cancel]',s).onclick=()=>close(null);
-  $('[data-a=save]',s).onclick=async()=>{const nf={};def.f.forEach(([k,t,o={}])=>{let v=$('#e_'+k,s).value;v=t==='area'?v.replace(/\s+$/,''):v.trim();if(o.card)v=v.replace(/\s/g,'');if(v)nf[k]=v;});
-   const err=$('#e_err',s);if(nf.totp){const o=parseOtp(nf.totp);if(!o||o.err){err.textContent=o&&o.err==='migration'?T('totp_migration'):T('totp_bad');return;}}
+  $('[data-a=save]',s).onclick=async()=>{const nf={};def.f.forEach(([k,t,o={}])=>{let v=$('#e_'+k,s).value;/* secrets are stored exactly as typed — never trimmed */v=t==='secret'||t==='totp'?v:t==='area'?v.replace(/\s+$/,''):v.trim();if(o.card)v=v.replace(/\s/g,'');if(v)nf[k]=v;});
+   const err=$('#e_err',s);if(nf.expiry){const m=/^(\d{2})\/(\d{2})$/.exec(nf.expiry);if(!m||+m[1]<1||+m[1]>12){err.textContent=T('exp_bad');$('#e_expiry',s).focus();return;}}
+   if(nf.totp){const o=parseOtp(nf.totp);if(!o||o.err){err.textContent=o&&o.err==='migration'?T('totp_migration'):T('totp_bad');return;}}
    syncCf();const cf=it.cf.filter(c=>c.n.trim()||c.v.trim()).map(c=>({n:c.n.trim(),v:c.v,s:!!c.s}));
    let title=$('#e_title',s).value.trim();if(!title)title=hostOf(nf.url)||nf.ssid||nf.bankName||nf.docType||it.tplName||'';
    if(!title){err.textContent=T('need_title');$('#e_title',s).focus();return;}
@@ -1312,6 +1401,7 @@ async function viewFile(m){let blob,url;try{blob=await fileBlob(m);url=URL.creat
  {onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=async()=>{const v=b.dataset.v;const file=new File([blob],m.name,{type:m.type});
   if(v==='share'){if(navigator.canShare&&navigator.canShare({files:[file]})){try{await hold(()=>navigator.share({files:[file],title:m.name}));}catch(e){}}else saveFile(file);}
   else if(v==='dl')saveFile(file);else if(v==='open'){hold(async()=>{window.open(url,'_blank','noopener');});}else close(v);})});
+ try{URL.revokeObjectURL(url);S.urls=S.urls.filter(x=>x!==url);}catch(e){}
  if(r==='edit'){await editFile(m);rerender();}else if(r==='item'&&owner){const cur=S.stack[S.stack.length-1];if(!(cur.view==='item'&&cur.params.id===owner.id))go('item',{id:owner.id});}}
 function editFile(m){return modal(`<h3 class="mh">${ficon(m.type)} ${T('edit')}</h3><label class="lbl" for="ef_n">${T('file_name')}</label><input id="ef_n" class="inp" value="${esc(m.name)}" autocomplete="off">
  <label class="lbl" for="ef_c">${T('file_cat')}</label><select id="ef_c" class="inp">${FCATS.map(c=>`<option value="${c}" ${c===m.cat?'selected':''}>${T('fc_'+c)}</option>`).join('')}</select>
@@ -1352,17 +1442,17 @@ VIEWS.health=(p,V)=>{const L=live();const withPw=L.filter(it=>pwFieldsOf(it).len
  ${sec(T('h_breached'),breached)}${sec(T('h_weak'),weak)}${sec(T('h_reused'),reused)}${sec(T('h_old'),old)}`:`<p class="empty">${T('h_none')}</p>`}
  ${exp.length?sec(T('h_expiring'),exp):''}<p class="mlbl" style="margin-top:16px">${T('h_note')}</p>${foot()}</main>`;
  wire(V);wireRows(V);const hc=$('#hcheck',V);if(hc)hc.onclick=async()=>{if(!(await hibpConsent()))return;hc.disabled=true;const pr=$('#hprog',V);let i=0;
-  for(const it of withPw){i++;pr.textContent=T('h_checking',{i,n:withPw.length});let mx=0;
+  const sid=S.sid;for(const it of withPw){if(sid!==S.sid||!S.unlocked)return;i++;pr.textContent=T('h_checking',{i,n:withPw.length});let mx=0;
    try{for(const pw of pwFieldsOf(it))mx=Math.max(mx,await pwnedCount(pw));it.breach=mx;it.breachAt=Date.now();await saveItem(it);}catch(e){pr.textContent=T('breach_err');hc.disabled=false;return;}await sleep(120);}
   rerender();};};
 
 /* ================= settings ================= */
-function backupDlg(){return (async()=>{let file;try{file=await buildBackup();}catch(e){toast(T('err_generic',{e:e.message}),'bad');return;}
+function backupDlg(){return (async()=>{let file,done=false;try{file=await buildBackup();}catch(e){toast(T('err_generic',{e:e.message}),'bad');return false;}
  const r=await modal(`<h3 class="mh">${T('b_ready')}</h3><p class="mtext">${esc(file.name)} · ${fmtSize(file.size)}</p><p class="mlbl">${T('b_hint')}</p>
  <div class="stack" style="margin-top:12px">${navigator.canShare&&navigator.canShare({files:[file]})?`<button class="btn pri big" data-v="share">↗ ${T('b_share')}</button>`:''}<button class="btn big" data-v="save">⬇ ${T('b_save')}</button><button class="link" data-v="0">${T('cancel')}</button></div>`,
  {onOpen:(s,close)=>$$('[data-v]',s).forEach(b=>b.onclick=()=>close(b.dataset.v))});
- if(r==='share'){try{await hold(()=>navigator.share({files:[file],title:file.name}));LS.set('lastBackup',Date.now());toast(T('b_made'));}catch(e){if(e.name!=='AbortError'){saveFile(file);LS.set('lastBackup',Date.now());}}}
- else if(r==='save'){saveFile(file);LS.set('lastBackup',Date.now());toast(T('b_made'));}rerender();})();}
+ if(r==='share'){try{await hold(()=>navigator.share({files:[file],title:file.name}));done=true;}catch(e){if(e.name!=='AbortError'){saveFile(file);done=true;}}}
+ else if(r==='save'){saveFile(file);done=true;}if(done){LS.set('lastBackup',Date.now());toast(T('b_made'));}if(S.unlocked)rerender();return done;})();}
 VIEWS.settings=async(p,V)=>{const q=await DB.get('meta','quick'),bio=await DB.get('meta','bio');const al=LS.get('autolock',1),cl=LS.get('clip',30),lb=LS.get('lastBackup',0);const D=S.decoy;
  let pers=null,est=null;try{pers=await navigator.storage.persisted();est=await navigator.storage.estimate();}catch(e){}
  if(!S.unlocked||S.stack[S.stack.length-1].view!=='settings')return;
@@ -1378,12 +1468,12 @@ VIEWS.settings=async(p,V)=>{const q=await DB.get('meta','quick'),bio=await DB.ge
  <div class="two" style="margin-top:8px"><button class="btn" id="sqpin">🔢 ${T('q_set_pin')}</button><button class="btn" id="sqpat">⠿ ${T('q_set_pattern')}</button></div>${q?`<button class="btn wide" id="sqx" style="margin-top:10px">${T('q_remove')}</button>`:''}<p class="mlbl">${T('q_note')}</p></div>`}
  <div class="two"><button class="btn" id="schpw">🔑 ${T('s_change_pw')}</button>${D?'':`<button class="btn" id="srec">🧾 ${T('s_new_rec')}</button>`}</div>
  ${D?'':`<button class="btn wide" id="skit" style="margin-top:10px">🧰 ${T('kit_t')}</button>
- <div class="card" style="margin-top:10px"><div class="kv"><span>🎭 ${T('dc_t')}</span><span>${S.decoyExists?T('bio_on'):T('bio_off')}</span></div><p class="mlbl">${T('dc_short')}</p>
- <div style="margin-top:8px">${S.decoyExists?`<button class="btn wide" id="sdcx">${T('dc_remove')}</button>`:`<button class="btn wide" id="sdc">${T('dc_create')}</button>`}</div></div>`}
+ ${S.decoyExists?`<div class="card" style="margin-top:10px"><p>${T('dcl_note')}</p><button class="btn wide" id="sdcx" style="margin-top:8px">${T('dcl_t')}</button></div>`:''}`}
  <h3 class="sec">${T('s_items')}</h3><button class="btn wide" id="stpl">🧩 ${T('tpl_t')} (${templates().length})</button>
  <h3 class="sec">${T('s_backup')}</h3><div class="card"><p class="mlbl" style="margin:0 0 10px">${lb?T('b_last',{d:fmtDate(lb)}):T('b_never')}</p><div class="stack"><button class="btn pri" id="sbk">🛡️ ${T('b_export')}</button>${D?'':`<button class="btn" id="srs">↩ ${T('b_import')}</button>`}</div><p class="mlbl">${T('b_hint')}</p></div>
  <div class="card"><div class="stack"><button class="btn" id="scsv">📥 ${T('csv_import')}</button><p class="mlbl">${T('csv_note')}</p><button class="btn danger" id="scsvx">📤 ${T('csv_export')}</button></div></div>
  <h3 class="sec">${T('s_storage')}</h3><div class="card"><p>${pers===true?T('st_persist_ok'):T('st_persist_no')}</p>${est&&est.usage!=null?`<p class="mlbl">${T('st_used',{u:fmtSize(est.usage)})}</p>`:''}
+ ${S.unreadable&&!S.decoyExists?`<p class="mtext" style="color:var(--warn)">${T('unreadable',{n:S.unreadable})}</p>`:''}
  ${location.hostname===SHARED_HOST?`<p class="mtext" style="color:var(--warn);margin-bottom:0">${esc(T('shared_origin',{h:SHARED_HOST}))}</p>`:''}</div>
  <h3 class="sec">${T('s_help')}</h3><div class="two"><button class="btn" id="sguide">📖 ${T('s_guide')}</button><button class="btn" data-go="about">ℹ️ ${T('about')}</button></div>
  <a class="btn wide" style="margin-top:10px;text-decoration:none" href="privacy_policy.html" target="_blank" rel="noopener">🔒 ${T('s_privacy')}</a>
@@ -1397,11 +1487,11 @@ VIEWS.settings=async(p,V)=>{const q=await DB.get('meta','quick'),bio=await DB.ge
  on('sbiox',async()=>{await DB.del('meta','bio');toast(T('bio_removed'));rerender();});
  on('sqpin',()=>doSetupQuick('pin'));on('sqpat',()=>doSetupQuick('pattern'));
  on('sqx',async()=>{await DB.del('meta','quick');toast(T('q_removed'));rerender();});
- on('schpw',changePwDlg);on('skit',emergencyKit);on('sdc',decoySetup);on('sdcx',decoyRemove);on('stpl',async()=>{await templatesDlg();rerender();});
+ on('schpw',changePwDlg);on('skit',emergencyKit);on('sdcx',legacyDecoyDlg);on('stpl',async()=>{await templatesDlg();rerender();});
  on('srec',async()=>{if(!(await confirmDlg(T('new_rec_c'))))return;const code=await newRecovery();
   await modal(`<h3 class="mh">${T('rec_t')}</h3><p class="mtext">${T('rec_d')}</p><div class="reccode">${esc(code)}</div><button class="btn wide" id="nrc">⧉ ${T('rec_copy')}</button>
   <label class="chk"><input type="checkbox" id="nrk"> ${T('rec_check')}</label><div class="mact"><button class="btn pri" id="nrg" disabled>${T('done')}</button></div>`,
-  {sticky:true,onOpen:(s,close)=>{$('#nrc',s).onclick=()=>copyText(code);$('#nrk',s).onchange=e=>{$('#nrg',s).disabled=!e.target.checked;};$('#nrg',s).onclick=()=>close();}});});
+  {sticky:true,onOpen:(s,close)=>{$('#nrc',s).onclick=()=>copyText(code);$('#nrk',s).onchange=e=>{$('#nrg',s).disabled=!e.target.checked;};$('#nrg',s).onclick=()=>close();}});await mustBackupAfterKeys();});
  on('sbk',backupDlg);on('srs',restoreFlow);
  on('scsv',async()=>{const [f]=await pickFile($('#fcsv'));if(!f)return;const list=csvToLogins(await f.text());if(!list.length){toast(T('csv_none'),'bad');return;}
   const r=await importLogins(list);toast(T('csv_done',r));await confirmDlg(T('csv_delete_hint'),{ok:T('confirm'),no:T('close')});rerender();});
@@ -1410,13 +1500,14 @@ VIEWS.settings=async(p,V)=>{const q=await DB.get('meta','quick'),bio=await DB.ge
  on('sguide',()=>modal('<div id="gh"></div>',{onOpen:(s,close)=>obSlides($('#gh',s),()=>close(),false)}));
  on('sreset',async()=>{if(!(await confirmDlg(T('reset_c1'),{danger:true,ok:T('delete')})))return;const w=T('reset_word');
   const a=await promptDlg(T('reset_c2',{w}),{danger:true,ok:T('delete')});if(a==null||a.trim()!==w)return;
-  S.unlocked=false;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;$('#view').innerHTML='';await DB.wipe();LS.clearAll();toast(T('reset_done'));setTimeout(()=>location.reload(),700);});
+  S.unlocked=false;if(S.dekRaw)S.dekRaw.fill(0);S.dekRaw=null;S.dek=null;$('#view').innerHTML='';const res=await DB.wipe();try{await caches.delete('vaultnest-share');}catch(e){}
+  if(res!=='ok'){await alertDlg(T('reset_blocked'));location.reload();return;}LS.clearAll();toast(T('reset_done'));setTimeout(()=>location.reload(),700);});
  if(S.keepY!=null)window.scrollTo(0,S.keepY);};
 function changePwDlg(){return modal(`<h3 class="mh">${T('s_change_pw')}</h3><label class="lbl" for="chc">${T('cur_pw')}</label><div class="pwbox"><input id="chc" class="inp" type="password" dir="ltr" autocomplete="current-password" autofocus><button type="button" class="eye" data-eye="chc">👁</button></div>
  ${pwFields('ch')}<div class="err" id="cherr" role="alert"></div><div class="mact"><button class="btn" data-a="x">${T('cancel')}</button><button class="btn pri" data-a="s">${T('save')}</button></div>`,
  {sticky:true,onOpen:(s,close)=>{bindMeter($('#ch1',s),$('#chm',s),$('#chml',s));$('[data-a=x]',s).onclick=()=>close();
-  $('[data-a=s]',s).onclick=async()=>{const err=$('#cherr',s);try{const raw=S.decoy?await unwrapDecoy($('#chc',s).value):await unwrapPw($('#chc',s).value);raw.fill(0);}catch(e){err.textContent=T('wrong_pw');return;}
-   const pw=await readPwFields(s,'ch',err);if(!pw)return;if(S.decoy)await setDecoyPw(S.dekRaw,pw);else await setMasterPw(S.dekRaw,pw);toast(T('pw_changed'));close();};}});}
+  $('[data-a=s]',s).onclick=async()=>{const err=$('#cherr',s);try{const raw=await unwrapPw($('#chc',s).value);raw.fill(0);}catch(e){err.textContent=T('wrong_pw');return;}
+   const pw=await readPwFields(s,'ch',err);if(!pw)return;await setMasterPw(S.dekRaw,pw);toast(T('pw_changed'));close();await mustBackupAfterKeys();};}});}
 /* ================= about ================= */
 VIEWS.about=async(p,V)=>{const errs=JSON.parse(localStorage.getItem(LSP+'errlog')||'[]');
  V.innerHTML=`${topbar(T('about'))}<main class="wrap"><div style="text-align:center;margin:10px 0 18px"><div class="dialwrap" style="margin:0 auto 8px;width:110px">${dialSVG()}</div>
@@ -1446,7 +1537,8 @@ function applyLook(){const h=document.documentElement;h.dataset.theme=LS.get('th
  const bg=getComputedStyle(h).getPropertyValue('--bg').trim()||'#000';const m=$('meta[name=theme-color]');if(m)m.content=bg;}
 function detectLang(){const n=(navigator.language||'he').slice(0,2).toLowerCase();return LANG[n]?n:(n==='iw'?'he':'en');}
 async function boot(){setLang(LS.get('lang',detectLang()));applyLook();
- if(/[?&]share=1/.test(location.search)){S.pendingShare=true;try{history.replaceState(null,'',location.pathname);}catch(e){}}
+ if(/[?&]share=1/.test(location.search)){try{history.replaceState(null,'',location.pathname);}catch(e){}}
+ try{if(window.caches)caches.delete('vaultnest-share');}catch(e){} // remove any unencrypted leftovers from 1.1.0 share-to-vault
  if(location.protocol==='file:'){fatal(T('fatal_file'));return;}
  if(!window.crypto||!crypto.subtle||!window.indexedDB){fatal(T('fatal_crypto'));return;}
  try{await DB.open();}catch(e){fatal(T('fatal_storage'));return;}

@@ -4,10 +4,11 @@
    - redirected responses (Cloudflare 308 for .html) are re-wrapped clean before serving/caching
    - skipWaiting + clients.claim so a fixing version takes over immediately
    - cross-origin requests (Have I Been Pwned) are never touched or cached
-   - v1.1: Android share target — POST ./share-target is parked in cache 'vaultnest-share' until the vault is unlocked,
-     then imported (encrypted) and deleted by the page (handleShare in index.html)
+   - v1.1.1: share-to-vault is DISABLED (it parked incoming files unencrypted). A POST to ./share-target from an old
+     install is answered with a redirect and nothing is stored; leftover 'vaultnest-share' data is deleted on activate.
+   - navigation: a 5xx/404 from the host falls back to the cached app instead of showing an error page
    BUMP VERSION ON EVERY UPDATE. */
-const VERSION = 'vaultnest-v1.1.0';
+const VERSION = 'vaultnest-v1.1.1';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './privacy_policy.html'];
 
 async function clean(r) {
@@ -38,6 +39,7 @@ self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys.filter(k => k.startsWith('vaultnest-') && k !== VERSION).map(k => caches.delete(k)));
+    await caches.delete('vaultnest-share'); // unencrypted leftovers from 1.1.0
     await self.clients.claim();
   })());
 });
@@ -47,6 +49,10 @@ async function navigate(req) {
   try {
     const r = await withTimeout(fetch(req, { cache: 'no-cache' }), 4000);
     const cr = await clean(r);
+    if (!cr.ok && (cr.status >= 500 || cr.status === 404)) {
+      const hit = (await c.match(req, { ignoreSearch: true })) || (await c.match('./index.html'));
+      if (hit) return clean(hit);
+    }
     if (cr.ok) {
       const path = new URL(req.url).pathname;
       const key = /\/(index\.html)?$/.test(path) || /\/index$/.test(path) ? './index.html' : req.url.split('?')[0];
@@ -60,27 +66,9 @@ async function navigate(req) {
   }
 }
 
-async function parkShare(req) {
-  try {
-    const fd = await req.formData();
-    const c = await caches.open('vaultnest-share');
-    for (const k of await c.keys()) await c.delete(k);
-    const meta = { t: Date.now(), title: fd.get('title') || '', text: fd.get('text') || '', url: fd.get('url') || '', files: [] };
-    let i = 0;
-    for (const f of fd.getAll('files')) {
-      if (!f || typeof f === 'string' || !f.size) continue;
-      const key = 'f' + (i++);
-      await c.put(new URL('__share/' + key, self.registration.scope).href, new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }));
-      meta.files.push({ key, name: f.name || key, type: f.type || '' });
-    }
-    await c.put(new URL('__share/meta', self.registration.scope).href, new Response(JSON.stringify(meta), { headers: { 'Content-Type': 'application/json' } }));
-  } catch (err) { /* fall through to the app anyway */ }
-  return Response.redirect(new URL('./?share=1', self.registration.scope).href, 303);
-}
-
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/share-target')) { e.respondWith(parkShare(req)); return; }
+  if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/share-target')) { e.respondWith(Response.redirect(new URL('./', self.registration.scope).href, 303)); return; }
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // pass-through: HIBP and anything external, never cached
