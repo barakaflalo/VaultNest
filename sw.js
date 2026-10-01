@@ -4,8 +4,10 @@
    - redirected responses (Cloudflare 308 for .html) are re-wrapped clean before serving/caching
    - skipWaiting + clients.claim so a fixing version takes over immediately
    - cross-origin requests (Have I Been Pwned) are never touched or cached
+   - v1.1: Android share target — POST ./share-target is parked in cache 'vaultnest-share' until the vault is unlocked,
+     then imported (encrypted) and deleted by the page (handleShare in index.html)
    BUMP VERSION ON EVERY UPDATE. */
-const VERSION = 'vaultnest-v1.0.0';
+const VERSION = 'vaultnest-v1.1.0';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './privacy_policy.html'];
 
 async function clean(r) {
@@ -58,8 +60,27 @@ async function navigate(req) {
   }
 }
 
+async function parkShare(req) {
+  try {
+    const fd = await req.formData();
+    const c = await caches.open('vaultnest-share');
+    for (const k of await c.keys()) await c.delete(k);
+    const meta = { t: Date.now(), title: fd.get('title') || '', text: fd.get('text') || '', url: fd.get('url') || '', files: [] };
+    let i = 0;
+    for (const f of fd.getAll('files')) {
+      if (!f || typeof f === 'string' || !f.size) continue;
+      const key = 'f' + (i++);
+      await c.put(new URL('__share/' + key, self.registration.scope).href, new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }));
+      meta.files.push({ key, name: f.name || key, type: f.type || '' });
+    }
+    await c.put(new URL('__share/meta', self.registration.scope).href, new Response(JSON.stringify(meta), { headers: { 'Content-Type': 'application/json' } }));
+  } catch (err) { /* fall through to the app anyway */ }
+  return Response.redirect(new URL('./?share=1', self.registration.scope).href, 303);
+}
+
 self.addEventListener('fetch', e => {
   const req = e.request;
+  if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/share-target')) { e.respondWith(parkShare(req)); return; }
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // pass-through: HIBP and anything external, never cached

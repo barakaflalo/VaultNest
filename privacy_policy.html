@@ -24,7 +24,7 @@ a{color:#C9A24A}
 <main>
 <section lang="he">
 <h1>מדיניות פרטיות — VaultNest</h1>
-<p class="meta">הכספת שלי · AppNest · עודכן: אוקטובר 2026 · גרסה 1.0.0</p>
+<p class="meta">הכספת שלי · AppNest · עודכן: אוקטובר 2026 · גרסה 1.1.0</p>
 
 <div class="box">
 <p><b>בקצרה:</b> כל מה שאתה שומר ב-VaultNest מוצפן ונשמר רק במכשיר שלך. אין לנו שרת, אין חשבון, ואין לנו שום גישה למידע שלך.</p>
@@ -37,9 +37,11 @@ a{color:#C9A24A}
 <ul>
 <li><b>בדיקת דליפות (רשות בלבד):</b> אם תבחר ״בדוק אם דלפה״, האפליקציה מחשבת במכשיר ״טביעה״ (SHA-1) של הסיסמה ושולחת לשירות Have I Been Pwned (api.pwnedpasswords.com) רק את 5 התווים הראשונים שלה. הסיסמה עצמה, שם המשתמש, כתובת האתר וכל פרט אחר לא נשלחים. לפני הבדיקה הראשונה תתבקש לאשר.</li>
 <li><b>גיבוי ושיתוף:</b> קובץ גיבוי נוצר רק כשאתה מבקש, והוא מוצפן. אם תשתף אותו (למשל ל-Google Drive), הוא נשלח ליעד שבחרת — עדיין מוצפן.</li>
+<li><b>תזכורת ביומן (רשות בלבד):</b> אם תבחר ״הוסף ל-Google Calendar״, נפתח אתר Google Calendar עם כותרת ותאריך בלבד (למשל ״דרכון: התוקף פג ב…״) — בלי מספרים או פרטים סודיים. אפשר במקום זה ליצור קובץ יומן שנשאר אצלך.</li>
+<li><b>שיתוף פריט:</b> ״שיתוף מאובטח״ יוצר קובץ מוצפן שנפתח רק עם קוד חד-פעמי; הוא נשלח רק לאן שתבחר.</li>
 <li><b>קבצים שאתה מוריד או משתף מתוך הכספת</b> יוצאים ממנה לא מוצפנים, ליעד שבחרת. ייצוא סיסמאות ל-CSV יוצר קובץ לא מוצפן, רק אחרי אישור מפורש.</li>
 </ul>
-<p>מלבד זה האפליקציה לא יוצרת שום קשר לאינטרנט, ואינה טוענת קוד, גופנים או ספריות מצד שלישי.</p>
+<p>מלבד זה האפליקציה לא יוצרת שום קשר לאינטרנט ואינה טוענת קוד או גופנים מבחוץ. ספרייה אחת קטנה בקוד פתוח (qrcode-generator, רישיון MIT) מוטמעת בתוך הקובץ ומשמשת רק ליצירת QR של רשת Wi-Fi, במכשיר. כשמשתפים לכספת מאפליקציה אחרת, הקובץ נשמר זמנית במכשיר עד פתיחת הכספת, ואז מוצפן והעותק הזמני נמחק.</p>
 
 <h2>מצלמה וטביעת אצבע</h2>
 <p>צילום מתוך הכספת נשמר מוצפן בכספת בלבד ולא בגלריה. טביעת אצבע מופעלת דרך מנגנון ה-passkey של הטלפון (WebAuthn); טביעת האצבע עצמה לא יוצאת מהטלפון ואינה מגיעה לאפליקציה.</p>
@@ -61,7 +63,7 @@ a{color:#C9A24A}
 
 <section lang="en">
 <h1>Privacy Policy — VaultNest</h1>
-<p class="meta">My vault · AppNest · Updated: October 2026 · Version 1.0.0</p>
+<p class="meta">My vault · AppNest · Updated: October 2026 · Version 1.1.0</p>
 
 <div class="box">
 <p><b>In short:</b> everything you store in VaultNest is encrypted and kept only on your device. There is no server, no account, and we have no access to your data.</p>
@@ -74,9 +76,11 @@ a{color:#C9A24A}
 <ul>
 <li><b>Leak check (optional):</b> if you choose "Check for leaks", the app computes a SHA-1 hash of the password on your device and sends only its first 5 characters to Have I Been Pwned (api.pwnedpasswords.com). The password, username, website and any other detail are never sent. You are asked to agree before the first check.</li>
 <li><b>Backup and sharing:</b> a backup file is created only when you ask, and it is encrypted. If you share it (for example to Google Drive), it goes to the destination you chose — still encrypted.</li>
+<li><b>Calendar reminder (optional):</b> if you choose "Add to Google Calendar", Google Calendar opens with a title and date only (e.g. "Passport: expires on…") — no numbers or secret details. You can create a calendar file that stays with you instead.</li>
+<li><b>Item sharing:</b> "Secure share" creates an encrypted file that opens only with a one-time code; it goes only where you send it.</li>
 <li><b>Files you download or share from the vault</b> leave it unencrypted, to the destination you chose. Exporting passwords to CSV creates an unencrypted file, only after explicit confirmation.</li>
 </ul>
-<p>Other than that, the app makes no internet connections and loads no third-party code, fonts or libraries.</p>
+<p>Other than that, the app makes no internet connections and loads no code or fonts from outside. One small open-source library (qrcode-generator, MIT license) is embedded in the file and used only to draw Wi-Fi QR codes, on the device. When you share into the vault from another app, the file is kept temporarily on the device until the vault is unlocked, then encrypted and the temporary copy deleted.</p>
 
 <h2>Camera and fingerprint</h2>
 <p>Photos taken from inside the vault are stored encrypted in the vault only, not in your gallery. Fingerprint unlock uses the phone's passkey system (WebAuthn); your fingerprint never leaves the phone and never reaches the app.</p>
